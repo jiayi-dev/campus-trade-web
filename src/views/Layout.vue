@@ -71,6 +71,16 @@ const menus = [
     name: '交易中心',
     path: '/orders',
     roles: ['student', 'seller', 'admin']
+  },
+  {
+    name: '我的店铺',
+    path: '/seller',
+    roles: ['seller']
+  },
+  {
+    name: '管理后台',
+    path: '/admin',
+    roles: ['admin']
   }
 ]
 

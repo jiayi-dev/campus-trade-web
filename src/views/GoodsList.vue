@@ -4,10 +4,16 @@
     <div class="page-header">
       <h2>商品中心</h2>
 
+      <div>
+        <el-button @click="handleBatchAdd">
+          批量发布
+        </el-button>
+
       <el-button type="primary" @click="handleAdd">
         发布商品
       </el-button>
     </div>
+      </div>
 
     <!-- 搜索区域 -->
     <div class="search-bar">
@@ -174,6 +180,67 @@
 
     </el-dialog>
 
+      <el-dialog
+          v-model="batchDialogVisible"
+          title="批量发布商品"
+          width="900px"
+      >
+        <el-table :data="batchGoodsList" border>
+          <el-table-column
+              type="index"
+              label="行号"
+              width="70"
+          />
+
+          <el-table-column label="商品名称">
+            <template #default="scope">
+              <el-input
+                  v-model="scope.row.goodsName"
+                  placeholder="请输入商品名称"
+              />
+            </template>
+          </el-table-column>
+
+          <el-table-column label="分类ID" width="120">
+            <template #default="scope">
+              <el-input
+                  v-model.number="scope.row.categoryId"
+                  placeholder="分类ID"
+              />
+            </template>
+          </el-table-column>
+
+          <el-table-column label="价格" width="150">
+            <template #default="scope">
+              <el-input
+                  v-model.number="scope.row.price"
+                  type="number"
+                  placeholder="价格"
+              />
+            </template>
+          </el-table-column>
+
+          <el-table-column label="商品描述">
+            <template #default="scope">
+              <el-input
+                  v-model="scope.row.description"
+                  placeholder="商品描述"
+              />
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <template #footer>
+          <el-button @click="batchDialogVisible = false">
+            取消
+          </el-button>
+
+          <el-button type="primary" @click="handleBatchSave">
+            批量发布
+          </el-button>
+        </template>
+      </el-dialog>
+
   </div>
 </template>
 
@@ -205,6 +272,12 @@ const dialogVisible = ref(false)
 // false = 新增
 // true = 编辑
 const isEdit = ref(false)
+
+// 批量发布弹窗
+const batchDialogVisible = ref(false)
+
+// 批量发布商品列表
+const batchGoodsList = ref([])
 
 
 // 商品表单
@@ -292,6 +365,27 @@ const handleAdd = () => {
 
 
 // =========================
+// 点击“批量发布”
+// =========================
+
+const handleBatchAdd = () => {
+
+  batchGoodsList.value = Array.from(
+      { length: 5 },
+      () => ({
+        userId: Number(localStorage.getItem('userId')),
+        categoryId: null,
+        goodsName: '',
+        description: '',
+        price: null,
+        status: 1
+      })
+  )
+
+  batchDialogVisible.value = true
+}
+
+// =========================
 // 点击“编辑”
 // =========================
 
@@ -375,6 +469,67 @@ const handleSave = async () => {
   }
 }
 
+
+// =========================
+// 批量发布商品
+// =========================
+
+const handleBatchSave = async () => {
+
+  // 过滤完全没有填写的空行
+  const validGoodsList = batchGoodsList.value.filter(item => {
+    return (
+        item.goodsName ||
+        item.categoryId !== null ||
+        item.price !== null ||
+        item.description
+    )
+  })
+
+  // 一行都没有填写
+  if (validGoodsList.length === 0) {
+    ElMessage.warning('请至少填写一条商品信息')
+    return
+  }
+
+  // 检查商品名称和价格
+  for (let i = 0; i < validGoodsList.length; i++) {
+
+    const goods = validGoodsList[i]
+
+    if (!goods.goodsName || !goods.goodsName.trim()) {
+      ElMessage.warning(`第${i + 1}行：商品名称不能为空`)
+      return
+    }
+
+    if (goods.price === null || goods.price === '') {
+      ElMessage.warning(`第${i + 1}行：商品价格不能为空`)
+      return
+    }
+
+    if (goods.price < 0) {
+      ElMessage.warning(`第${i + 1}行：商品价格不能小于0`)
+      return
+    }
+  }
+
+  try {
+
+    const result = await request.post(
+        '/goods/batch',
+        validGoodsList
+    )
+
+    ElMessage.success(result)
+
+    batchDialogVisible.value = false
+
+    loadGoods()
+
+  } catch (error) {
+    // request.js 已经统一提示错误
+  }
+}
 
 // =========================
 // 删除商品

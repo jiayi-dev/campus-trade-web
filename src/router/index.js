@@ -17,7 +17,7 @@ const router = createRouter({
       children: [
         {
           path: 'home',
-          component: () => import('../views/Home.vue')
+          component: () => import('../views/Dashboard.vue')
         },
 
         {
@@ -34,6 +34,19 @@ const router = createRouter({
           meta: {
             roles: ['student', 'seller', 'admin']
           }
+
+        },
+        {
+          path: 'seller',
+          component: () => import('../views/SellerDashboard.vue'),
+          meta: {
+            roles: ['seller']
+          }
+        },
+        {
+          path: 'admin',
+          component: () => import('../views/AdminDashboard.vue'),
+          meta: { roles: ['admin'] }
         }
       ]
     }
