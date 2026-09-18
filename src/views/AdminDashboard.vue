@@ -1,4 +1,3 @@
-```vue
 <template>
   <div class="admin-page">
 
@@ -244,4 +243,3 @@ onMounted(() => {
 }
 
 </style>
-```

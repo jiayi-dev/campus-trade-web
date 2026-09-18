@@ -1,4 +1,3 @@
-cd /d D:\code\campus-trade-web
 <template>
   <div class="order-page">
     <div class="page-header">
