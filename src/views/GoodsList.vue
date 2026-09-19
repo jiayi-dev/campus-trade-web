@@ -95,6 +95,7 @@
             :key="goods.goodsId"
             :goods="goods"
             :category-name="getCategoryName(goods.categoryId)"
+            :editable="goods.userId === currentUserId"
             @edit="handleEdit"
             @delete="handleDelete"
         />
@@ -163,12 +164,15 @@
 
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="scope">
-            <el-button type="primary" link @click="handleEdit(scope.row.goodsId)">
-              编辑
-            </el-button>
-            <el-button type="danger" link @click="handleDelete(scope.row.goodsId)">
-              删除
-            </el-button>
+            <!-- 编辑/删除只对自己发布的商品展示，越权请求由后端兜底拒绝 -->
+            <template v-if="scope.row.userId === currentUserId">
+              <el-button type="primary" link @click="handleEdit(scope.row.goodsId)">
+                编辑
+              </el-button>
+              <el-button type="danger" link @click="handleDelete(scope.row.goodsId)">
+                删除
+              </el-button>
+            </template>
           </template>
         </el-table-column>
 
@@ -240,13 +244,6 @@
               :rows="4"
               placeholder="请输入商品描述"
           />
-        </el-form-item>
-
-        <el-form-item label="商品状态">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option label="在售" :value="1" />
-            <el-option label="下架" :value="0" />
-          </el-select>
         </el-form-item>
 
       </el-form>
@@ -344,6 +341,9 @@ import { formatPrice, formatDateTime } from '../utils/format'
 import request from '../utils/request'
 
 const router = useRouter()
+
+// 当前登录用户：编辑/删除按钮只对自己的商品展示（真正的权限由后端兜底）
+const currentUserId = Number(localStorage.getItem('userId'))
 
 // 表格视图点击商品名称进入详情
 const goDetail = (goodsId) => {
@@ -482,8 +482,7 @@ const form = ref({
   categoryId: null,
   goodsName: '',
   description: '',
-  price: null,
-  status: 1
+  price: null
 })
 
 
@@ -500,8 +499,7 @@ const handleAdd = () => {
     categoryId: null,
     goodsName: '',
     description: '',
-    price: null,
-    status: 1
+    price: null
   }
 
   dialogVisible.value = true
@@ -539,14 +537,14 @@ const handleEdit = async (goodsId) => {
 
     isEdit.value = true
 
+    // 编辑不携带状态字段：商品上下架走工作台的专门操作，不能借编辑改动
     form.value = {
       goodsId: result.goodsId,
       userId: result.userId,
       categoryId: result.categoryId,
       goodsName: result.goodsName,
       description: result.description,
-      price: result.price,
-      status: result.status
+      price: result.price
     }
 
     dialogVisible.value = true
@@ -580,17 +578,30 @@ const handleSave = async () => {
   try {
     if (isEdit.value) {
       const result = await request.put('/goods', form.value)
-      ElMessage.success(result)
+
+      // 后端业务失败以文本返回（HTTP 仍为 200），需按内容区分
+      if (result === '商品修改成功') {
+        ElMessage.success(result)
+        dialogVisible.value = false
+        loadGoods()
+      } else {
+        ElMessage.error(result || '商品修改失败')
+      }
+
     } else {
       const result = await request.post('/goods', {
         ...form.value,
         userId: Number(localStorage.getItem('userId'))
       })
-      ElMessage.success(result)
-    }
 
-    dialogVisible.value = false
-    loadGoods()
+      if (String(result).startsWith('商品发布成功')) {
+        ElMessage.success(result)
+        dialogVisible.value = false
+        loadGoods()
+      } else {
+        ElMessage.error(result || '商品发布失败')
+      }
+    }
 
   } catch (error) {
     // request.js 已经统一提示错误
@@ -672,14 +683,20 @@ const handleDelete = async (goodsId) => {
     )
 
     const result = await request.delete(`/goods/${goodsId}`)
-    ElMessage.success(result)
 
-    // 删除的是当前页最后一条时，回退一页避免停留在空页
-    if (goodsList.value.length === 1 && pageNum.value > 1) {
-      pageNum.value--
+    // 已产生交易记录的商品会被后端拒绝，这里按返回文本区分成功与失败
+    if (result === '商品删除成功') {
+      ElMessage.success(result)
+
+      // 删除的是当前页最后一条时，回退一页避免停留在空页
+      if (goodsList.value.length === 1 && pageNum.value > 1) {
+        pageNum.value--
+      }
+
+      loadGoods()
+    } else {
+      ElMessage.error(result || '商品删除失败')
     }
-
-    loadGoods()
 
   } catch (error) {
     // 用户点击取消时不做处理

@@ -41,8 +41,8 @@
         </span>
       </div>
 
-      <!-- 管理操作：阻止冒泡，避免点编辑也跳进详情 -->
-      <div class="goods-card__actions" @click.stop>
+      <!-- 管理操作：仅商品归属人可见（真正的权限由后端兜底）；阻止冒泡，避免点编辑也跳进详情 -->
+      <div v-if="editable" class="goods-card__actions" @click.stop>
         <el-button type="primary" link @click="$emit('edit', goods.goodsId)">
           <el-icon><EditPen /></el-icon>编辑
         </el-button>
@@ -73,6 +73,11 @@ const props = defineProps({
   categoryName: {
     type: String,
     default: ''
+  },
+  // 是否展示编辑/删除操作（归属人可见；权限最终由后端校验）
+  editable: {
+    type: Boolean,
+    default: true
   }
 })
 
