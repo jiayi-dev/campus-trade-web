@@ -1,115 +1,189 @@
 <template>
   <div class="goods-page">
 
+    <!-- 页面标题与操作 -->
     <div class="page-header">
-      <h2>商品中心</h2>
-
       <div>
-        <el-button @click="handleBatchAdd">
-          批量发布
-        </el-button>
-
-      <el-button type="primary" @click="handleAdd">
-        发布商品
-      </el-button>
-    </div>
+        <h2>商品中心</h2>
+        <p>浏览、筛选与管理平台上的闲置商品</p>
       </div>
 
-    <!-- 搜索区域 -->
-    <div class="search-bar">
+      <div class="page-header__actions">
+        <!-- 卡片 / 表格双视图切换 -->
+        <el-radio-group v-model="viewMode" size="default">
+          <el-radio-button value="card">
+            <el-icon><Grid /></el-icon>
+          </el-radio-button>
+          <el-radio-button value="table">
+            <el-icon><Menu /></el-icon>
+          </el-radio-button>
+        </el-radio-group>
 
-      <el-input
-          v-model="goodsName"
-          placeholder="请输入商品名称"
-          clearable
-          style="width: 240px"
-      />
+        <el-button @click="handleBatchAdd">
+          <el-icon><DocumentAdd /></el-icon>批量发布
+        </el-button>
 
-      <el-button type="primary" @click="handleSearch">
-        查询
-      </el-button>
+        <el-button type="primary" @click="handleAdd">
+          <el-icon><Plus /></el-icon>发布商品
+        </el-button>
+      </div>
+    </div>
 
-      <el-button @click="handleReset">
-        重置
-      </el-button>
+    <!-- 筛选区 -->
+    <el-card class="filter-card" shadow="never">
+      <div class="filter-bar">
+
+        <el-input
+            v-model="goodsName"
+            placeholder="搜索商品名称"
+            clearable
+            class="filter-bar__name"
+            :prefix-icon="Search"
+            @keyup.enter="handleSearch"
+            @clear="handleSearch"
+        />
+
+        <el-select
+            v-model="categoryId"
+            placeholder="商品分类"
+            clearable
+            class="filter-bar__category"
+        >
+          <el-option
+              v-for="cat in categories"
+              :key="cat.categoryId"
+              :label="cat.categoryName"
+              :value="cat.categoryId"
+          />
+        </el-select>
+
+        <div class="filter-bar__price">
+          <el-input-number
+              v-model="minPrice"
+              :min="0"
+              :controls="false"
+              placeholder="最低价"
+              class="price-input"
+          />
+          <span class="price-sep">—</span>
+          <el-input-number
+              v-model="maxPrice"
+              :min="0"
+              :controls="false"
+              placeholder="最高价"
+              class="price-input"
+          />
+        </div>
+
+        <el-button type="primary" @click="handleSearch">
+          <el-icon><Search /></el-icon>查询
+        </el-button>
+
+        <el-button @click="handleReset">
+          <el-icon><RefreshLeft /></el-icon>重置
+        </el-button>
+
+      </div>
+    </el-card>
+
+    <!-- 卡片视图 -->
+    <div v-if="viewMode === 'card'" v-loading="loading" class="card-view">
+
+      <div v-if="goodsList.length > 0" class="goods-grid">
+        <GoodsCard
+            v-for="goods in goodsList"
+            :key="goods.goodsId"
+            :goods="goods"
+            :category-name="getCategoryName(goods.categoryId)"
+            @edit="handleEdit"
+            @delete="handleDelete"
+        />
+      </div>
+
+      <el-empty
+          v-else-if="!loading"
+          class="goods-empty"
+          :description="emptyText"
+      >
+        <el-button type="primary" @click="hasFilters ? handleReset() : handleAdd()">
+          {{ hasFilters ? '清空筛选条件' : '发布第一件商品' }}
+        </el-button>
+      </el-empty>
 
     </div>
 
-    <!-- 商品表格 -->
-    <el-table
-        :data="goodsList"
-        border
-        style="width: 100%"
+    <!-- 表格视图 -->
+    <el-card
+        v-else
+        shadow="never"
+        class="table-card"
+        v-loading="loading"
     >
 
-      <el-table-column
-          prop="goodsId"
-          label="商品ID"
-          width="90"
-      />
+      <el-table :data="goodsList" border stripe style="width: 100%">
 
-      <el-table-column
-          prop="goodsName"
-          label="商品名称"
-      />
+        <el-table-column prop="goodsId" label="商品ID" width="90" />
 
-      <el-table-column
-          prop="price"
-          label="价格"
-          width="120"
-      />
+        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
 
-      <el-table-column
-          prop="status"
-          label="状态"
-          width="100"
-      />
+        <el-table-column label="分类" width="110">
+          <template #default="scope">
+            {{ getCategoryName(scope.row.categoryId) }}
+          </template>
+        </el-table-column>
 
-      <el-table-column
-          prop="createTime"
-          label="发布时间"
-      />
+        <el-table-column label="价格" width="120">
+          <template #default="scope">
+            <span class="price-text">{{ formatPrice(scope.row.price) }}</span>
+          </template>
+        </el-table-column>
 
-      <el-table-column
-          label="操作"
-          width="180"
-      >
-        <template #default="scope">
+        <el-table-column label="状态" width="100">
+          <template #default="scope">
+            <el-tag
+                :type="scope.row.status === 1 ? 'success' : 'info'"
+                size="small"
+            >
+              {{ scope.row.status === 1 ? '在售' : '已下架' }}
+            </el-tag>
+          </template>
+        </el-table-column>
 
-          <el-button
-              type="primary"
-              link
-              @click="handleEdit(scope.row.goodsId)"
-          >
-            编辑
-          </el-button>
+        <el-table-column label="发布时间" min-width="160">
+          <template #default="scope">
+            {{ formatDateTime(scope.row.createTime) }}
+          </template>
+        </el-table-column>
 
-          <el-button
-              type="danger"
-              link
-              @click="handleDelete(scope.row.goodsId)"
-          >
-            删除
-          </el-button>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="scope">
+            <el-button type="primary" link @click="handleEdit(scope.row.goodsId)">
+              编辑
+            </el-button>
+            <el-button type="danger" link @click="handleDelete(scope.row.goodsId)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
 
+        <template #empty>
+          <el-empty :description="emptyText" />
         </template>
-      </el-table-column>
 
-    </el-table>
+      </el-table>
+
+    </el-card>
 
     <!-- 分页 -->
-    <div class="pagination">
-
+    <div v-if="total > 0" class="pagination">
       <el-pagination
           v-model:current-page="pageNum"
-          v-model:page-size="pageSize"
+          :page-size="pageSize"
           :total="total"
           layout="total, prev, pager, next"
           @current-change="loadGoods"
       />
-
     </div>
-
 
     <!-- 新增 / 编辑商品弹窗 -->
     <el-dialog
@@ -128,17 +202,28 @@
         </el-form-item>
 
         <el-form-item label="商品分类">
-          <el-input
-              v-model.number="form.categoryId"
-              placeholder="请输入分类ID"
-          />
+          <el-select
+              v-model="form.categoryId"
+              placeholder="请选择分类"
+              style="width: 100%"
+          >
+            <el-option
+                v-for="cat in categories"
+                :key="cat.categoryId"
+                :label="cat.categoryName"
+                :value="cat.categoryId"
+            />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="商品价格">
-          <el-input
-              v-model.number="form.price"
-              type="number"
+          <el-input-number
+              v-model="form.price"
+              :min="0"
+              :precision="2"
+              controls-position="right"
               placeholder="请输入商品价格"
+              style="width: 100%"
           />
         </el-form-item>
 
@@ -152,10 +237,7 @@
         </el-form-item>
 
         <el-form-item label="商品状态">
-          <el-select
-              v-model="form.status"
-              style="width: 100%"
-          >
+          <el-select v-model="form.status" style="width: 100%">
             <el-option label="在售" :value="1" />
             <el-option label="下架" :value="0" />
           </el-select>
@@ -164,90 +246,94 @@
       </el-form>
 
       <template #footer>
-
-        <el-button @click="dialogVisible = false">
-          取消
-        </el-button>
-
-        <el-button
-            type="primary"
-            @click="handleSave"
-        >
-          保存
-        </el-button>
-
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSave">保存</el-button>
       </template>
 
     </el-dialog>
 
-      <el-dialog
-          v-model="batchDialogVisible"
-          title="批量发布商品"
-          width="900px"
-      >
-        <el-table :data="batchGoodsList" border>
-          <el-table-column
-              type="index"
-              label="行号"
-              width="70"
-          />
+    <!-- 批量发布商品弹窗 -->
+    <el-dialog v-model="batchDialogVisible" title="批量发布商品" width="900px">
 
-          <el-table-column label="商品名称">
-            <template #default="scope">
-              <el-input
-                  v-model="scope.row.goodsName"
-                  placeholder="请输入商品名称"
+      <el-table :data="batchGoodsList" border>
+
+        <el-table-column type="index" label="行号" width="70" />
+
+        <el-table-column label="商品名称">
+          <template #default="scope">
+            <el-input
+                v-model="scope.row.goodsName"
+                placeholder="商品名称"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column label="分类" width="150">
+          <template #default="scope">
+            <el-select
+                v-model="scope.row.categoryId"
+                placeholder="选择分类"
+                size="small"
+                style="width: 120px"
+            >
+              <el-option
+                  v-for="cat in categories"
+                  :key="cat.categoryId"
+                  :label="cat.categoryName"
+                  :value="cat.categoryId"
               />
-            </template>
-          </el-table-column>
+            </el-select>
+          </template>
+        </el-table-column>
 
-          <el-table-column label="分类ID" width="120">
-            <template #default="scope">
-              <el-input
-                  v-model.number="scope.row.categoryId"
-                  placeholder="分类ID"
-              />
-            </template>
-          </el-table-column>
+        <el-table-column label="价格" width="150">
+          <template #default="scope">
+            <el-input-number
+                v-model="scope.row.price"
+                :min="0"
+                :controls="false"
+                placeholder="价格"
+                size="small"
+                style="width: 120px"
+            />
+          </template>
+        </el-table-column>
 
-          <el-table-column label="价格" width="150">
-            <template #default="scope">
-              <el-input
-                  v-model.number="scope.row.price"
-                  type="number"
-                  placeholder="价格"
-              />
-            </template>
-          </el-table-column>
+        <el-table-column label="商品描述">
+          <template #default="scope">
+            <el-input
+                v-model="scope.row.description"
+                placeholder="商品描述"
+            />
+          </template>
+        </el-table-column>
 
-          <el-table-column label="商品描述">
-            <template #default="scope">
-              <el-input
-                  v-model="scope.row.description"
-                  placeholder="商品描述"
-              />
-            </template>
-          </el-table-column>
-        </el-table>
+      </el-table>
 
-        <template #footer>
-          <el-button @click="batchDialogVisible = false">
-            取消
-          </el-button>
+      <template #footer>
+        <el-button @click="batchDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleBatchSave">批量发布</el-button>
+      </template>
 
-          <el-button type="primary" @click="handleBatchSave">
-            批量发布
-          </el-button>
-        </template>
-      </el-dialog>
+    </el-dialog>
 
   </div>
 </template>
 
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  Grid,
+  Menu,
+  Search,
+  RefreshLeft,
+  Plus,
+  DocumentAdd
+} from '@element-plus/icons-vue'
+import GoodsCard from '../components/GoodsCard.vue'
+import { formatPrice, formatDateTime } from '../utils/format'
 import request from '../utils/request'
 
 
@@ -255,12 +341,115 @@ import request from '../utils/request'
 // 页面数据
 // =========================
 
+// 视图模式：card 卡片 / table 表格，默认卡片
+const viewMode = ref('card')
+
+// 筛选条件
 const goodsName = ref('')
+const categoryId = ref(null)
+const minPrice = ref(null)
+const maxPrice = ref(null)
+
+const categories = ref([])
 const goodsList = ref([])
 
 const pageNum = ref(1)
-const pageSize = ref(5)
+const pageSize = ref(8)
 const total = ref(0)
+const loading = ref(false)
+
+// 当前是否存在筛选条件（用于空状态文案与按钮）
+const hasFilters = computed(() => {
+  return !!(goodsName.value || categoryId.value
+      || minPrice.value !== null || maxPrice.value !== null)
+})
+
+const emptyText = computed(() => {
+  return hasFilters.value
+      ? '没有找到符合条件的商品，换个关键词试试'
+      : '还没有商品，去发布第一件闲置吧'
+})
+
+// 分类ID → 分类名称映射
+const categoryNameMap = computed(() => {
+  const map = {}
+  categories.value.forEach(cat => {
+    map[cat.categoryId] = cat.categoryName
+  })
+  return map
+})
+
+const getCategoryName = (id) => categoryNameMap.value[id] || '未分类'
+
+
+// =========================
+// 查询分类
+// =========================
+
+const loadCategories = async () => {
+  try {
+    categories.value = await request.get('/categories')
+  } catch (error) {
+    // 分类加载失败不阻塞商品浏览，下拉为空时仍可按名称查询
+    console.error('加载分类失败：', error)
+  }
+}
+
+
+// =========================
+// 查询商品（携带全部筛选条件，后端 V1.0 已支持）
+// =========================
+
+const loadGoods = async () => {
+  loading.value = true
+
+  try {
+    const result = await request.get('/goods/page', {
+      params: {
+        goodsName: goodsName.value || undefined,
+        categoryId: categoryId.value ?? undefined,
+        minPrice: minPrice.value ?? undefined,
+        maxPrice: maxPrice.value ?? undefined,
+        pageNum: pageNum.value,
+        pageSize: pageSize.value
+      }
+    })
+
+    goodsList.value = result.list || []
+    total.value = result.total || 0
+
+  } catch (error) {
+    // request.js 已经统一提示错误
+  } finally {
+    loading.value = false
+  }
+}
+
+
+// =========================
+// 搜索 / 重置
+// =========================
+
+const handleSearch = () => {
+  // 价格区间合法性
+  if (minPrice.value !== null && maxPrice.value !== null
+      && minPrice.value > maxPrice.value) {
+    ElMessage.warning('最低价不能高于最高价')
+    return
+  }
+
+  pageNum.value = 1
+  loadGoods()
+}
+
+const handleReset = () => {
+  goodsName.value = ''
+  categoryId.value = null
+  minPrice.value = null
+  maxPrice.value = null
+  pageNum.value = 1
+  loadGoods()
+}
 
 
 // =========================
@@ -268,19 +457,11 @@ const total = ref(0)
 // =========================
 
 const dialogVisible = ref(false)
-
-// false = 新增
-// true = 编辑
 const isEdit = ref(false)
 
-// 批量发布弹窗
 const batchDialogVisible = ref(false)
-
-// 批量发布商品列表
 const batchGoodsList = ref([])
 
-
-// 商品表单
 const form = ref({
   goodsId: null,
   userId: null,
@@ -293,61 +474,10 @@ const form = ref({
 
 
 // =========================
-// 查询商品
-// =========================
-
-const loadGoods = async () => {
-
-  try {
-
-    const result = await request.get('/goods/page', {
-      params: {
-        goodsName: goodsName.value || undefined,
-        pageNum: pageNum.value,
-        pageSize: pageSize.value
-      }
-    })
-
-    goodsList.value = result.list
-    total.value = result.total
-
-  } catch (error) {
-    // request.js 已经统一提示错误
-  }
-}
-
-
-// =========================
-// 搜索
-// =========================
-
-const handleSearch = () => {
-
-  pageNum.value = 1
-
-  loadGoods()
-}
-
-
-// =========================
-// 重置搜索
-// =========================
-
-const handleReset = () => {
-
-  goodsName.value = ''
-  pageNum.value = 1
-
-  loadGoods()
-}
-
-
-// =========================
 // 点击“发布商品”
 // =========================
 
 const handleAdd = () => {
-
   isEdit.value = false
 
   form.value = {
@@ -369,7 +499,6 @@ const handleAdd = () => {
 // =========================
 
 const handleBatchAdd = () => {
-
   batchGoodsList.value = Array.from(
       { length: 5 },
       () => ({
@@ -385,14 +514,13 @@ const handleBatchAdd = () => {
   batchDialogVisible.value = true
 }
 
+
 // =========================
 // 点击“编辑”
 // =========================
 
 const handleEdit = async (goodsId) => {
-
   try {
-
     const result = await request.get(`/goods/${goodsId}`)
 
     isEdit.value = true
@@ -420,48 +548,34 @@ const handleEdit = async (goodsId) => {
 // =========================
 
 const handleSave = async () => {
-
   if (!form.value.goodsName) {
     ElMessage.warning('请输入商品名称')
     return
   }
 
-  if (
-      form.value.price === null ||
-      form.value.price === ''
-  ) {
+  if (!form.value.categoryId) {
+    ElMessage.warning('请选择商品分类')
+    return
+  }
+
+  if (form.value.price === null || form.value.price === '') {
     ElMessage.warning('请输入商品价格')
     return
   }
 
   try {
-
     if (isEdit.value) {
-
-      // 编辑商品
-      const result = await request.put(
-          '/goods',
-          form.value
-      )
-
+      const result = await request.put('/goods', form.value)
       ElMessage.success(result)
-
     } else {
-
-      // 新增商品
-      const result = await request.post(
-          '/goods',
-          {
-            ...form.value,
-            userId: Number(localStorage.getItem('userId'))
-          }
-      )
-
+      const result = await request.post('/goods', {
+        ...form.value,
+        userId: Number(localStorage.getItem('userId'))
+      })
       ElMessage.success(result)
     }
 
     dialogVisible.value = false
-
     loadGoods()
 
   } catch (error) {
@@ -475,7 +589,6 @@ const handleSave = async () => {
 // =========================
 
 const handleBatchSave = async () => {
-
   // 过滤完全没有填写的空行
   const validGoodsList = batchGoodsList.value.filter(item => {
     return (
@@ -486,19 +599,22 @@ const handleBatchSave = async () => {
     )
   })
 
-  // 一行都没有填写
   if (validGoodsList.length === 0) {
     ElMessage.warning('请至少填写一条商品信息')
     return
   }
 
-  // 检查商品名称和价格
+  // 逐行校验
   for (let i = 0; i < validGoodsList.length; i++) {
-
     const goods = validGoodsList[i]
 
     if (!goods.goodsName || !goods.goodsName.trim()) {
       ElMessage.warning(`第${i + 1}行：商品名称不能为空`)
+      return
+    }
+
+    if (!goods.categoryId) {
+      ElMessage.warning(`第${i + 1}行：请选择商品分类`)
       return
     }
 
@@ -514,16 +630,9 @@ const handleBatchSave = async () => {
   }
 
   try {
-
-    const result = await request.post(
-        '/goods/batch',
-        validGoodsList
-    )
-
+    const result = await request.post('/goods/batch', validGoodsList)
     ElMessage.success(result)
-
     batchDialogVisible.value = false
-
     loadGoods()
 
   } catch (error) {
@@ -531,14 +640,13 @@ const handleBatchSave = async () => {
   }
 }
 
+
 // =========================
 // 删除商品
 // =========================
 
 const handleDelete = async (goodsId) => {
-
   try {
-
     await ElMessageBox.confirm(
         '确定要删除这个商品吗？',
         '删除确认',
@@ -549,18 +657,18 @@ const handleDelete = async (goodsId) => {
         }
     )
 
-    const result = await request.delete(
-        `/goods/${goodsId}`
-    )
-
+    const result = await request.delete(`/goods/${goodsId}`)
     ElMessage.success(result)
+
+    // 删除的是当前页最后一条时，回退一页避免停留在空页
+    if (goodsList.value.length === 1 && pageNum.value > 1) {
+      pageNum.value--
+    }
 
     loadGoods()
 
   } catch (error) {
-
     // 用户点击取消时不做处理
-
   }
 }
 
@@ -570,6 +678,7 @@ const handleDelete = async (goodsId) => {
 // =========================
 
 onMounted(() => {
+  loadCategories()
   loadGoods()
 })
 </script>
@@ -583,19 +692,83 @@ onMounted(() => {
 
 .page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .page-header h2 {
-  margin: 0;
+  margin: 0 0 6px;
 }
 
-.search-bar {
+.page-header p {
+  margin: 0;
+  color: var(--brand-text-secondary);
+  font-size: 13.5px;
+}
+
+.page-header__actions {
   display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 筛选区 */
+.filter-card {
+  margin-bottom: 18px;
+  border-radius: var(--brand-radius-lg);
+}
+
+.filter-card :deep(.el-card__body) {
+  padding: 16px 20px;
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 20px;
+}
+
+.filter-bar__name {
+  width: 210px;
+}
+
+.filter-bar__category {
+  width: 160px;
+}
+
+.filter-bar__price {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.price-input {
+  width: 110px;
+}
+
+.price-sep {
+  color: var(--brand-text-secondary);
+}
+
+/* 卡片视图 */
+.card-view {
+  min-height: 260px;
+}
+
+.goods-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 18px;
+}
+
+.goods-empty {
+  padding: 60px 0;
+}
+
+.table-card {
+  border-radius: var(--brand-radius-lg);
 }
 
 .pagination {
