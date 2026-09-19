@@ -39,6 +39,16 @@ const router = createRouter({
         },
 
         {
+          // :id 是路由参数，商品卡片点击后携带 goodsId 进入详情页
+          path: 'goods/:id',
+          component: () => import('../views/GoodsDetail.vue'),
+          meta: {
+            title: '商品详情',
+            roles: ['student', 'seller', 'admin']
+          }
+        },
+
+        {
           path: 'orders',
           component: () => import('../views/OrderList.vue'),
           meta: {

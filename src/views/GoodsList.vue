@@ -124,7 +124,13 @@
 
         <el-table-column prop="goodsId" label="商品ID" width="90" />
 
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip>
+          <template #default="scope">
+            <el-link type="primary" :underline="false" @click="goDetail(scope.row.goodsId)">
+              {{ scope.row.goodsName }}
+            </el-link>
+          </template>
+        </el-table-column>
 
         <el-table-column label="分类" width="110">
           <template #default="scope">
@@ -323,6 +329,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Grid,
@@ -335,6 +342,13 @@ import {
 import GoodsCard from '../components/GoodsCard.vue'
 import { formatPrice, formatDateTime } from '../utils/format'
 import request from '../utils/request'
+
+const router = useRouter()
+
+// 表格视图点击商品名称进入详情
+const goDetail = (goodsId) => {
+  router.push(`/goods/${goodsId}`)
+}
 
 
 // =========================

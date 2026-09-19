@@ -1,6 +1,10 @@
 <template>
-  <!-- 商品卡片：卡片视图下的单个商品展示（暂无商品图片，用分类色块作封面） -->
-  <div class="goods-card" :class="{ 'is-offline': !onSale }">
+  <!-- 商品卡片：点击卡片整体进入商品详情 -->
+  <div
+      class="goods-card"
+      :class="{ 'is-offline': !onSale }"
+      @click="goDetail"
+  >
 
     <!-- 封面区 -->
     <div class="goods-card__cover" :class="`cover--${coverTheme}`">
@@ -37,8 +41,8 @@
         </span>
       </div>
 
-      <!-- 管理操作 -->
-      <div class="goods-card__actions">
+      <!-- 管理操作：阻止冒泡，避免点编辑也跳进详情 -->
+      <div class="goods-card__actions" @click.stop>
         <el-button type="primary" link @click="$emit('edit', goods.goodsId)">
           <el-icon><EditPen /></el-icon>编辑
         </el-button>
@@ -53,8 +57,11 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ShoppingBag, Clock, EditPen, Delete } from '@element-plus/icons-vue'
 import { formatPrice, formatRelativeTime } from '../utils/format'
+
+const router = useRouter()
 
 const props = defineProps({
   // 商品对象
@@ -70,6 +77,11 @@ const props = defineProps({
 })
 
 defineEmits(['edit', 'delete'])
+
+// 进入商品详情 /goods/:id
+const goDetail = () => {
+  router.push(`/goods/${props.goods.goodsId}`)
+}
 
 // status === 1 为在售，其余视为下架
 const onSale = computed(() => props.goods.status === 1)
@@ -89,6 +101,7 @@ const coverTheme = computed(() => {
   border-radius: var(--brand-radius-lg);
   box-shadow: var(--brand-shadow-sm);
   overflow: hidden;
+  cursor: pointer;
   transition:
     transform 0.25s ease,
     box-shadow 0.25s ease;
