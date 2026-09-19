@@ -16,27 +16,21 @@
     <!-- 数据概览卡片 -->
     <div class="stat-cards">
 
-      <el-card class="stat-card">
-        <div class="stat-title">商品总数</div>
-        <div class="stat-value">{{ statistics.goodsCount ?? 0 }}</div>
-      </el-card>
+      <StatCard label="商品总数" :value="statistics.goodsCount" theme="teal">
+        <template #icon><el-icon><Goods /></el-icon></template>
+      </StatCard>
 
-      <el-card class="stat-card">
-        <div class="stat-title">用户总数</div>
-        <div class="stat-value">{{ statistics.userCount ?? 0 }}</div>
-      </el-card>
+      <StatCard label="用户总数" :value="statistics.userCount" theme="blue">
+        <template #icon><el-icon><User /></el-icon></template>
+      </StatCard>
 
-      <el-card class="stat-card">
-        <div class="stat-title">分类数量</div>
-        <div class="stat-value">{{ statistics.categoryCount ?? 0 }}</div>
-      </el-card>
+      <StatCard label="分类数量" :value="statistics.categoryCount" theme="purple">
+        <template #icon><el-icon><Files /></el-icon></template>
+      </StatCard>
 
-      <el-card class="stat-card">
-        <div class="stat-title">商品总价值</div>
-        <div class="stat-value">
-          ¥{{ statistics.totalPrice ?? 0 }}
-        </div>
-      </el-card>
+      <StatCard label="商品总价值" prefix="¥" :value="statistics.totalPrice" theme="orange">
+        <template #icon><el-icon><Money /></el-icon></template>
+      </StatCard>
 
     </div>
 
@@ -69,6 +63,8 @@
 
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts'
+import { Goods, User, Files, Money } from '@element-plus/icons-vue'
+import StatCard from '../components/StatCard.vue'
 import request from '../utils/request'
 
 
@@ -160,24 +156,44 @@ const renderCategoryChart = () => {
   const option = {
 
     tooltip: {
-      trigger: 'axis'
+      trigger: 'axis',
+      borderRadius: 8,
+      valueFormatter: value => `¥${value}`
+    },
+
+    grid: {
+      left: 50,
+      right: 20,
+      top: 30,
+      bottom: 30
     },
 
     xAxis: {
       type: 'category',
-      data: categoryNames
+      data: categoryNames,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#d6e2e1' } },
+      axisLabel: { color: '#8a97a8' }
     },
 
     yAxis: {
       type: 'value',
-      name: '平均价格'
+      name: '平均价格',
+      nameTextStyle: { color: '#8a97a8' },
+      splitLine: { lineStyle: { color: '#eef3f3' } },
+      axisLabel: { color: '#8a97a8' }
     },
 
     series: [
       {
         name: '平均价格',
         type: 'bar',
-        data: avgPrices
+        data: avgPrices,
+        barWidth: '46%',
+        itemStyle: {
+          color: '#0ea5a4',
+          borderRadius: [6, 6, 0, 0]
+        }
       }
     ]
 
@@ -214,12 +230,17 @@ const renderPriceChart = () => {
 
   const option = {
 
+    color: ['#0ea5a4', '#36cfc9', '#87d2d1', '#ffb06a', '#ff7a45'],
+
     tooltip: {
-      trigger: 'item'
+      trigger: 'item',
+      borderRadius: 8,
+      formatter: '{b}：{c} 件（{d}%）'
     },
 
     legend: {
-      bottom: 0
+      bottom: 0,
+      textStyle: { color: '#8a97a8' }
     },
 
     series: [
@@ -227,6 +248,12 @@ const renderPriceChart = () => {
         name: '商品数量',
         type: 'pie',
         radius: ['45%', '70%'],
+        center: ['50%', '44%'],
+        itemStyle: {
+          borderColor: '#fff',
+          borderWidth: 3
+        },
+        label: { color: '#4b5a6a' },
         data: data
       }
     ]
@@ -321,21 +348,6 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
   margin-bottom: 20px;
-}
-
-.stat-card {
-  min-height: 120px;
-}
-
-.stat-title {
-  color: #909399;
-  font-size: 14px;
-  margin-bottom: 12px;
-}
-
-.stat-value {
-  font-size: 30px;
-  font-weight: 600;
 }
 
 .chart-row {

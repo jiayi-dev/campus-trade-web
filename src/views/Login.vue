@@ -1,50 +1,101 @@
 <template>
-  <div class="login-container">
+  <div class="auth-page">
 
-    <div class="login-box">
+    <div class="auth-card">
 
-      <h1>校园二手交易平台</h1>
+      <!-- 左侧品牌区 -->
+      <div class="auth-brand">
+        <div class="auth-brand__logo">
+          <div class="auth-brand__logo-badge">
+            <el-icon><RefreshRight /></el-icon>
+          </div>
+          校园二手交易平台
+        </div>
 
-      <!-- 登录身份切换 -->
-      <el-tabs v-model="loginType">
+        <div>
+          <div class="auth-brand__title">
+            让闲置物品<br />在校园里继续流转
+          </div>
+          <div class="auth-brand__subtitle">
+            面向同校学生的二手交易平台，发布、发现、沟通、交易，一站完成。
+          </div>
 
-        <el-tab-pane label="学生登录" name="student" />
+          <div class="auth-brand__features">
+            <div class="auth-brand__feature">
+              <el-icon><Location /></el-icon>
+              同校交易，线下自提更安心
+            </div>
+            <div class="auth-brand__feature">
+              <el-icon><ChatDotRound /></el-icon>
+              商品留言，买卖双方直接沟通
+            </div>
+            <div class="auth-brand__feature">
+              <el-icon><Promotion /></el-icon>
+              一键发布，闲置快速变现
+            </div>
+          </div>
+        </div>
+      </div>
 
-        <el-tab-pane label="卖家登录" name="seller" />
+      <!-- 右侧登录表单 -->
+      <div class="auth-form">
+        <h2 class="auth-form__title">欢迎回来 👋</h2>
+        <p class="auth-form__subtitle">请选择身份并登录你的账号</p>
 
-        <el-tab-pane label="管理员登录" name="admin" />
+        <!-- 登录身份切换 -->
+        <el-tabs v-model="loginType" class="login-tabs">
+          <el-tab-pane name="student">
+            <template #label>
+              <span class="tab-label"><el-icon><User /></el-icon>学生登录</span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="seller">
+            <template #label>
+              <span class="tab-label"><el-icon><Shop /></el-icon>卖家登录</span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane name="admin">
+            <template #label>
+              <span class="tab-label"><el-icon><Lock /></el-icon>管理员</span>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
 
-      </el-tabs>
+        <el-form @submit.prevent>
+          <el-form-item>
+            <el-input
+                v-model="username"
+                size="large"
+                placeholder="请输入用户名"
+                :prefix-icon="User"
+            />
+          </el-form-item>
 
-      <!-- 登录表单 -->
-      <el-form @submit.prevent>
+          <el-form-item>
+            <el-input
+                v-model="password"
+                size="large"
+                type="password"
+                show-password
+                placeholder="请输入密码"
+                :prefix-icon="Lock"
+                @keyup.enter="handleLogin"
+            />
+          </el-form-item>
 
-        <el-form-item label="用户名">
-          <el-input
-              v-model="username"
-              placeholder="请输入用户名"
-          />
-        </el-form-item>
+          <el-button
+              type="primary"
+              @click="handleLogin"
+              :loading="loading"
+          >
+            登 录
+          </el-button>
+        </el-form>
 
-        <el-form-item label="密码">
-          <el-input
-              v-model="password"
-              type="password"
-              show-password
-              placeholder="请输入密码"
-          />
-        </el-form-item>
-
-        <el-button
-            type="primary"
-            style="width: 100%"
-            @click="handleLogin"
-            :loading="loading"
-        >
-          登录
-        </el-button>
-
-      </el-form>
+        <div class="auth-form__footer">
+          还没有账号？<router-link to="/register">立即注册</router-link>
+        </div>
+      </div>
 
     </div>
 
@@ -54,6 +105,7 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { User, Lock, Shop, Location, ChatDotRound, Promotion, RefreshRight } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import request from '../utils/request'
 
@@ -117,15 +169,21 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
-.login-container {
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
+
+.tab-label {
+  display: inline-flex;
   align-items: center;
+  gap: 5px;
 }
 
-.login-box {
-  width: 400px;
+.login-tabs {
+  margin-bottom: 6px;
 }
+
+.login-tabs :deep(.el-tabs__item) {
+  width: 33.33%;
+  padding: 0;
+  justify-content: center;
+}
+
 </style>
-
