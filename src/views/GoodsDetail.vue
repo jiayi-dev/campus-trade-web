@@ -165,27 +165,40 @@
                 center
             />
 
-            <!-- 别人的商品：收藏按钮 -->
-            <el-button
-                v-else
-                :class="{ 'fav-active': isFavorite }"
-                :type="isFavorite ? 'default' : 'primary'"
-                class="fav-btn"
-                :loading="favLoading"
-                :disabled="goods.status !== 1"
-                size="large"
-                @click="toggleFavorite"
-            >
-              <el-icon class="fav-btn__icon">
-                <StarFilled v-if="isFavorite" />
-                <Star v-else />
-              </el-icon>
-              {{ isFavorite ? '已收藏' : '收藏商品' }}
-            </el-button>
+            <template v-else>
+              <!-- 立即购买：交易主入口 -->
+              <el-button
+                  type="primary"
+                  size="large"
+                  class="buy-btn"
+                  :loading="buying"
+                  :disabled="goods.status !== 1"
+                  @click="handleBuy"
+              >
+                <el-icon v-if="!buying"><ShoppingCart /></el-icon>
+                {{ goods.status === 1 ? '立即购买' : '商品已下架' }}
+              </el-button>
 
-            <div v-if="!isOwnGoods && goods.status !== 1" class="action-tip">
-              商品已下架，暂不可收藏
-            </div>
+              <!-- 收藏按钮 -->
+              <el-button
+                  :class="{ 'fav-active': isFavorite }"
+                  :type="isFavorite ? 'default' : 'primary'"
+                  class="fav-btn"
+                  :loading="favLoading"
+                  :disabled="goods.status !== 1"
+                  @click="toggleFavorite"
+              >
+                <el-icon class="fav-btn__icon">
+                  <StarFilled v-if="isFavorite" />
+                  <Star v-else />
+                </el-icon>
+                {{ isFavorite ? '已收藏' : '收藏商品' }}
+              </el-button>
+
+              <div v-if="goods.status !== 1" class="action-tip">
+                商品已下架，可能已经被卖出
+              </div>
+            </template>
 
           </el-card>
 
@@ -246,7 +259,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
   Star,
@@ -257,7 +270,8 @@ import {
   Document,
   ChatDotRound,
   User,
-  ShoppingBag
+  ShoppingBag,
+  ShoppingCart
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
@@ -282,6 +296,8 @@ const sellerLoading = ref(false)
 
 const isFavorite = ref(false)
 const favLoading = ref(false)
+
+const buying = ref(false)
 
 const messages = ref([])
 const messageLoading = ref(false)
@@ -427,6 +443,56 @@ const toggleFavorite = async () => {
     // request.js 已统一弹出网络错误
   } finally {
     favLoading.value = false
+  }
+}
+
+
+// =========================
+// 立即购买
+// =========================
+
+const handleBuy = async () => {
+
+  // 二次确认，防止误操作
+  try {
+    await ElMessageBox.confirm(
+        `确认以 ${formatPrice(goods.value.price)} 购买「${goods.value.goodsName}」吗？`,
+        '确认购买',
+        {
+          confirmButtonText: '确认购买',
+          cancelButtonText: '再想想',
+          type: 'warning'
+        }
+    )
+  } catch (action) {
+    // 用户点击取消
+    return
+  }
+
+  buying.value = true
+
+  try {
+    // 请求体只传 goodsId；买家身份由后端从登录 Token 解析
+    const result = await request.post('/orders', { goodsId })
+
+    if (typeof result === 'string' && result.startsWith('下单成功')) {
+      ElMessage.success(result)
+      // 商品已随订单下架，同步本地状态让按钮立即禁用
+      goods.value.status = 0
+      // 跳到交易中心的“我的购买”
+      router.push({ path: '/orders', query: { tab: 'buyer' } })
+    } else {
+      // 业务失败：已下架 / 自己的商品 / 被别人抢买
+      ElMessage.error(result || '下单失败，请稍后再试')
+      // 被别人抢买时，刷新页面上的商品状态
+      if (result && result.includes('买走')) {
+        goods.value.status = 0
+      }
+    }
+  } catch (error) {
+    // request.js 已统一弹出网络错误
+  } finally {
+    buying.value = false
   }
 }
 
@@ -724,6 +790,11 @@ onMounted(loadPage)
 }
 
 /* 操作区 */
+.buy-btn {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
 .fav-btn {
   width: 100%;
 }
