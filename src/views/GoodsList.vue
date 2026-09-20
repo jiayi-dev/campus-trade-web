@@ -1,15 +1,14 @@
 <template>
   <div class="goods-page">
 
-    <!-- 页面标题与操作 -->
+    <!-- 1. 页面标题与操作 -->
     <div class="page-header">
       <div>
-        <h2>商品中心</h2>
-        <p>浏览、筛选与管理平台上的闲置商品</p>
+        <h2>校园闲置市场</h2>
+        <p>挑选身边同学发布的真实闲置好物</p>
       </div>
 
       <div class="page-header__actions">
-        <!-- 卡片 / 表格双视图切换 -->
         <el-radio-group v-model="viewMode" size="default">
           <el-radio-button value="card">
             <el-icon><Grid /></el-icon>
@@ -29,7 +28,30 @@
       </div>
     </div>
 
-    <!-- 筛选区 -->
+    <!-- 2. 校园特色快捷入口（取真实分类列表前 7 个） -->
+    <div v-if="quickEntries.length > 0" class="quick-entries">
+      <div
+          class="quick-entry"
+          :class="{ 'is-active': isAllSelected }"
+          @click="selectAllGoods"
+      >
+        <el-icon class="quick-entry__icon"><Goods /></el-icon>
+        <span class="quick-entry__label">全部商品</span>
+      </div>
+
+      <div
+          v-for="cat in quickEntries"
+          :key="cat.categoryId"
+          class="quick-entry"
+          :class="{ 'is-active': categoryId === cat.categoryId }"
+          @click="selectCategory(cat.categoryId)"
+      >
+        <el-icon class="quick-entry__icon"><Box /></el-icon>
+        <span class="quick-entry__label">{{ cat.categoryName }}</span>
+      </div>
+    </div>
+
+    <!-- 3. 筛选区 -->
     <el-card class="filter-card" shadow="never">
       <div class="filter-bar">
 
@@ -45,9 +67,10 @@
 
         <el-select
             v-model="categoryId"
-            placeholder="商品分类"
+            placeholder="全部分类"
             clearable
             class="filter-bar__category"
+            @change="handleSearch"
         >
           <el-option
               v-for="cat in categories"
@@ -75,6 +98,44 @@
           />
         </div>
 
+        <el-select
+            v-model="conditionLevel"
+            placeholder="成色"
+            clearable
+            class="filter-bar__condition"
+            @change="handleSearch"
+        >
+          <el-option label="全新" :value="1" />
+          <el-option label="99新" :value="2" />
+          <el-option label="95新" :value="3" />
+          <el-option label="9成新" :value="4" />
+          <el-option label="8成新及以下" :value="5" />
+        </el-select>
+
+        <el-select
+            v-model="campus"
+            placeholder="校区"
+            clearable
+            class="filter-bar__campus"
+            @change="handleSearch"
+        >
+          <el-option label="东区" value="东区" />
+          <el-option label="西区" value="西区" />
+          <el-option label="南区" value="南区" />
+          <el-option label="北区" value="北区" />
+        </el-select>
+
+        <el-select
+            v-model="sortBy"
+            class="filter-bar__sort"
+            @change="handleSearch"
+        >
+          <el-option label="最新发布" value="latest" />
+          <el-option label="价格从低到高" value="price_asc" />
+          <el-option label="价格从高到低" value="price_desc" />
+          <el-option label="热度优先" value="hot" />
+        </el-select>
+
         <el-button type="primary" @click="handleSearch">
           <el-icon><Search /></el-icon>查询
         </el-button>
@@ -86,7 +147,17 @@
       </div>
     </el-card>
 
-    <!-- 卡片视图 -->
+    <!-- 4. 结果信息条 -->
+    <div class="result-bar">
+      <span class="result-bar__count">
+        共 <strong>{{ total }}</strong> 件商品
+      </span>
+      <span v-if="hasFilters" class="result-bar__hint">
+        已按筛选条件展示
+      </span>
+    </div>
+
+    <!-- 5. 卡片视图 -->
     <div v-if="viewMode === 'card'" v-loading="loading" class="card-view">
 
       <div v-if="goodsList.length > 0" class="goods-grid">
@@ -113,7 +184,7 @@
 
     </div>
 
-    <!-- 表格视图 -->
+    <!-- 6. 表格视图（辅助） -->
     <el-card
         v-else
         shadow="never"
@@ -123,9 +194,9 @@
 
       <el-table :data="goodsList" border stripe style="width: 100%">
 
-        <el-table-column prop="goodsId" label="商品ID" width="90" />
+        <el-table-column prop="goodsId" label="ID" width="70" />
 
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip>
+        <el-table-column prop="goodsName" label="商品名称" min-width="180" show-overflow-tooltip>
           <template #default="scope">
             <el-link type="primary" :underline="false" @click="goDetail(scope.row.goodsId)">
               {{ scope.row.goodsName }}
@@ -133,19 +204,39 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="分类" width="110">
+        <el-table-column label="分类" width="100">
           <template #default="scope">
             {{ getCategoryName(scope.row.categoryId) }}
           </template>
         </el-table-column>
 
-        <el-table-column label="价格" width="120">
+        <el-table-column label="成色" width="90">
+          <template #default="scope">
+            {{ conditionLabel(scope.row.conditionLevel) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column label="校区" width="80">
+          <template #default="scope">
+            {{ scope.row.campus || '—' }}
+          </template>
+        </el-table-column>
+
+        <el-table-column label="价格" width="110">
           <template #default="scope">
             <span class="price-text">{{ formatPrice(scope.row.price) }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" width="100">
+        <el-table-column label="收藏" width="70">
+          <template #default="scope">{{ scope.row.favoriteCount ?? 0 }}</template>
+        </el-table-column>
+
+        <el-table-column label="浏览" width="70">
+          <template #default="scope">{{ scope.row.viewCount ?? 0 }}</template>
+        </el-table-column>
+
+        <el-table-column label="状态" width="90">
           <template #default="scope">
             <el-tag
                 :type="scope.row.status === 1 ? 'success' : 'info'"
@@ -156,15 +247,12 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="发布时间" min-width="160">
-          <template #default="scope">
-            {{ formatDateTime(scope.row.createTime) }}
-          </template>
+        <el-table-column label="发布时间" min-width="150">
+          <template #default="scope">{{ formatDateTime(scope.row.createTime) }}</template>
         </el-table-column>
 
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="scope">
-            <!-- 编辑/删除只对自己发布的商品展示，越权请求由后端兜底拒绝 -->
             <template v-if="scope.row.userId === currentUserId">
               <el-button type="primary" link @click="handleEdit(scope.row.goodsId)">
                 编辑
@@ -184,34 +272,34 @@
 
     </el-card>
 
-    <!-- 分页 -->
+    <!-- 7. 分页 -->
     <div v-if="total > 0" class="pagination">
       <el-pagination
           v-model:current-page="pageNum"
           :page-size="pageSize"
           :total="total"
-          layout="total, prev, pager, next"
+          layout="total, prev, pager, next, jumper"
           @current-change="loadGoods"
       />
     </div>
 
-    <!-- 新增 / 编辑商品弹窗 -->
+    <!-- 8. 新增 / 编辑商品弹窗（升级：加成色/校区/交易地点） -->
     <el-dialog
         v-model="dialogVisible"
         :title="isEdit ? '编辑商品' : '发布商品'"
-        width="500px"
+        width="520px"
     >
 
       <el-form label-width="90px">
 
-        <el-form-item label="商品名称">
+        <el-form-item label="商品名称" required>
           <el-input
               v-model="form.goodsName"
               placeholder="请输入商品名称"
           />
         </el-form-item>
 
-        <el-form-item label="商品分类">
+        <el-form-item label="商品分类" required>
           <el-select
               v-model="form.categoryId"
               placeholder="请选择分类"
@@ -226,7 +314,7 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="商品价格">
+        <el-form-item label="商品价格" required>
           <el-input-number
               v-model="form.price"
               :min="0"
@@ -234,6 +322,42 @@
               controls-position="right"
               placeholder="请输入商品价格"
               style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item label="商品成色">
+          <el-select
+              v-model="form.conditionLevel"
+              placeholder="请选择成色"
+              clearable
+              style="width: 100%"
+          >
+            <el-option label="全新（带吊牌）" :value="1" />
+            <el-option label="99新（仅拆封）" :value="2" />
+            <el-option label="95新（轻微痕迹）" :value="3" />
+            <el-option label="9成新（正常痕迹）" :value="4" />
+            <el-option label="8成新及以下" :value="5" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="交易校区">
+          <el-select
+              v-model="form.campus"
+              placeholder="请选择校区"
+              clearable
+              style="width: 100%"
+          >
+            <el-option label="东区" value="东区" />
+            <el-option label="西区" value="西区" />
+            <el-option label="南区" value="南区" />
+            <el-option label="北区" value="北区" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="面交地点">
+          <el-input
+              v-model="form.location"
+              placeholder="如：三食堂门口 / 图书馆一楼"
           />
         </el-form-item>
 
@@ -255,7 +379,7 @@
 
     </el-dialog>
 
-    <!-- 批量发布商品弹窗 -->
+    <!-- 9. 批量发布商品弹窗（保持简化，不强制新字段） -->
     <el-dialog v-model="batchDialogVisible" title="批量发布商品" width="900px">
 
       <el-table :data="batchGoodsList" border>
@@ -329,12 +453,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Grid,
-  Menu,
-  Search,
-  RefreshLeft,
-  Plus,
-  DocumentAdd
+  Grid, Menu, Search, RefreshLeft, Plus, DocumentAdd,
+  Goods, Box
 } from '@element-plus/icons-vue'
 import GoodsCard from '../components/GoodsCard.vue'
 import { formatPrice, formatDateTime } from '../utils/format'
@@ -363,25 +483,34 @@ const goodsName = ref('')
 const categoryId = ref(null)
 const minPrice = ref(null)
 const maxPrice = ref(null)
+const conditionLevel = ref(null)
+const campus = ref(null)
+const sortBy = ref('latest')
 
 const categories = ref([])
 const goodsList = ref([])
 
 const pageNum = ref(1)
-const pageSize = ref(8)
+const pageSize = ref(12)
 const total = ref(0)
 const loading = ref(false)
 
 // 当前是否存在筛选条件（用于空状态文案与按钮）
 const hasFilters = computed(() => {
   return !!(goodsName.value || categoryId.value
-      || minPrice.value !== null || maxPrice.value !== null)
+      || minPrice.value !== null || maxPrice.value !== null
+      || conditionLevel.value !== null || campus.value)
+})
+
+// 全部商品模式（用于快捷入口"全部"高亮）
+const isAllSelected = computed(() => {
+  return !categoryId.value && !hasFilters.value
 })
 
 const emptyText = computed(() => {
   return hasFilters.value
-      ? '没有找到符合条件的商品，换个关键词试试'
-      : '还没有商品，去发布第一件闲置吧'
+      ? '没有找到符合条件的商品，换个关键词或清空筛选试试'
+      : '校园市场还没有商品，去发布第一件闲置吧'
 })
 
 // 分类ID → 分类名称映射
@@ -394,6 +523,45 @@ const categoryNameMap = computed(() => {
 })
 
 const getCategoryName = (id) => categoryNameMap.value[id] || '未分类'
+
+// 成色字典（与后端 TINYINT 一致）
+const CONDITION_MAP = {
+  1: '全新',
+  2: '99新',
+  3: '95新',
+  4: '9成新',
+  5: '8成新'
+}
+const conditionLabel = (level) => CONDITION_MAP[level] || '—'
+
+
+// 校园快捷入口：取真实分类列表前 7 个（不硬编码，保证数据真实）
+const quickEntries = computed(() => {
+  return [...categories.value].slice(0, 7)
+})
+
+const selectAllGoods = () => {
+  goodsName.value = ''
+  categoryId.value = null
+  minPrice.value = null
+  maxPrice.value = null
+  conditionLevel.value = null
+  campus.value = null
+  sortBy.value = 'latest'
+  pageNum.value = 1
+  loadGoods()
+}
+
+const selectCategory = (id) => {
+  // 点击已选中的分类再次点击：取消筛选
+  if (categoryId.value === id) {
+    categoryId.value = null
+  } else {
+    categoryId.value = id
+  }
+  pageNum.value = 1
+  loadGoods()
+}
 
 
 // =========================
@@ -411,7 +579,7 @@ const loadCategories = async () => {
 
 
 // =========================
-// 查询商品（携带全部筛选条件，后端 V1.0 已支持）
+// 查询商品（携带全部筛选条件，后端 V1.1 已支持成色/校区/排序）
 // =========================
 
 const loadGoods = async () => {
@@ -424,6 +592,9 @@ const loadGoods = async () => {
         categoryId: categoryId.value ?? undefined,
         minPrice: minPrice.value ?? undefined,
         maxPrice: maxPrice.value ?? undefined,
+        conditionLevel: conditionLevel.value ?? undefined,
+        campus: campus.value || undefined,
+        sortBy: sortBy.value,
         pageNum: pageNum.value,
         pageSize: pageSize.value
       }
@@ -461,6 +632,9 @@ const handleReset = () => {
   categoryId.value = null
   minPrice.value = null
   maxPrice.value = null
+  conditionLevel.value = null
+  campus.value = null
+  sortBy.value = 'latest'
   pageNum.value = 1
   loadGoods()
 }
@@ -482,12 +656,15 @@ const form = ref({
   categoryId: null,
   goodsName: '',
   description: '',
-  price: null
+  price: null,
+  conditionLevel: null,
+  campus: '',
+  location: ''
 })
 
 
 // =========================
-// 点击“发布商品”
+// 点击"发布商品"
 // =========================
 
 const handleAdd = () => {
@@ -499,7 +676,10 @@ const handleAdd = () => {
     categoryId: null,
     goodsName: '',
     description: '',
-    price: null
+    price: null,
+    conditionLevel: null,
+    campus: '',
+    location: ''
   }
 
   dialogVisible.value = true
@@ -507,7 +687,7 @@ const handleAdd = () => {
 
 
 // =========================
-// 点击“批量发布”
+// 点击"批量发布"
 // =========================
 
 const handleBatchAdd = () => {
@@ -528,7 +708,7 @@ const handleBatchAdd = () => {
 
 
 // =========================
-// 点击“编辑”
+// 点击"编辑"
 // =========================
 
 const handleEdit = async (goodsId) => {
@@ -544,7 +724,10 @@ const handleEdit = async (goodsId) => {
       categoryId: result.categoryId,
       goodsName: result.goodsName,
       description: result.description,
-      price: result.price
+      price: result.price,
+      conditionLevel: result.conditionLevel,
+      campus: result.campus || '',
+      location: result.location || ''
     }
 
     dialogVisible.value = true
@@ -721,6 +904,7 @@ onMounted(() => {
   width: 100%;
 }
 
+/* 页面标题 */
 .page-header {
   display: flex;
   align-items: flex-start;
@@ -730,6 +914,8 @@ onMounted(() => {
 
 .page-header h2 {
   margin: 0 0 6px;
+  font-size: 22px;
+  color: var(--brand-text);
 }
 
 .page-header p {
@@ -744,29 +930,79 @@ onMounted(() => {
   gap: 10px;
 }
 
+/* 校园特色快捷入口 */
+.quick-entries {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f7f1e8 0%, #faf5ee 60%, #f1ede6 100%);
+  border-radius: var(--brand-radius-lg);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.quick-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  min-width: 78px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.quick-entry:hover {
+  background: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(166, 140, 100, 0.12);
+}
+
+.quick-entry.is-active {
+  background: #fff;
+  border-color: var(--brand-primary);
+  box-shadow: 0 4px 12px rgba(166, 140, 100, 0.18);
+}
+
+.quick-entry__icon {
+  font-size: 22px;
+  color: var(--brand-primary);
+}
+
+.quick-entry__label {
+  font-size: 12.5px;
+  color: var(--brand-text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 /* 筛选区 */
 .filter-card {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
   border-radius: var(--brand-radius-lg);
 }
 
 .filter-card :deep(.el-card__body) {
-  padding: 16px 20px;
+  padding: 14px 18px;
 }
 
 .filter-bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
 
 .filter-bar__name {
-  width: 210px;
+  width: 200px;
 }
 
 .filter-bar__category {
-  width: 160px;
+  width: 140px;
 }
 
 .filter-bar__price {
@@ -776,11 +1012,48 @@ onMounted(() => {
 }
 
 .price-input {
-  width: 110px;
+  width: 100px;
 }
 
 .price-sep {
   color: var(--brand-text-secondary);
+}
+
+.filter-bar__condition {
+  width: 130px;
+}
+
+.filter-bar__campus {
+  width: 110px;
+}
+
+.filter-bar__sort {
+  width: 140px;
+}
+
+/* 结果信息条 */
+.result-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+}
+
+.result-bar__count strong {
+  color: var(--brand-text);
+  font-size: 14px;
+  margin: 0 3px;
+}
+
+.result-bar__hint {
+  padding: 2px 8px;
+  font-size: 11.5px;
+  background: #f0e9df;
+  color: #a08560;
+  border-radius: 10px;
 }
 
 /* 卡片视图 */
@@ -790,8 +1063,8 @@ onMounted(() => {
 
 .goods-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: 16px;
 }
 
 .goods-empty {
