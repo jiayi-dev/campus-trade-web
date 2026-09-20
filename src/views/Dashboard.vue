@@ -173,15 +173,15 @@ const renderCategoryChart = () => {
       data: categoryNames,
       axisTick: { show: false },
       axisLine: { lineStyle: { color: '#d6e2e1' } },
-      axisLabel: { color: '#8a97a8' }
+      axisLabel: { color: '#9d9aa8' }
     },
 
     yAxis: {
       type: 'value',
       name: '平均价格',
-      nameTextStyle: { color: '#8a97a8' },
-      splitLine: { lineStyle: { color: '#eef3f3' } },
-      axisLabel: { color: '#8a97a8' }
+      nameTextStyle: { color: '#9d9aa8' },
+      splitLine: { lineStyle: { color: '#efece6' } },
+      axisLabel: { color: '#9d9aa8' }
     },
 
     series: [
@@ -191,7 +191,7 @@ const renderCategoryChart = () => {
         data: avgPrices,
         barWidth: '46%',
         itemStyle: {
-          color: '#0ea5a4',
+          color: '#7c90a8',
           borderRadius: [6, 6, 0, 0]
         }
       }
@@ -230,7 +230,7 @@ const renderPriceChart = () => {
 
   const option = {
 
-    color: ['#0ea5a4', '#36cfc9', '#87d2d1', '#ffb06a', '#ff7a45'],
+    color: ['#7c90a8', '#c9a9b8', '#e3cba8', '#a8b8a0', '#9d8fa5'],
 
     tooltip: {
       trigger: 'item',
@@ -240,7 +240,7 @@ const renderPriceChart = () => {
 
     legend: {
       bottom: 0,
-      textStyle: { color: '#8a97a8' }
+      textStyle: { color: '#9d9aa8' }
     },
 
     series: [

@@ -31,10 +31,45 @@
 
             <div class="goods-hero">
 
-              <!-- 封面（暂无商品图片，沿用分类色块） -->
-              <div class="goods-hero__cover" :class="`cover--${coverTheme}`">
-                <el-icon><ShoppingBag /></el-icon>
-                <span>{{ categoryName || '未分类' }}</span>
+              <!-- 封面：多图轮播 / 单图 / 无图莫兰迪色块兜底（图片加载失败也回退色块） -->
+              <div class="goods-hero__cover">
+                <el-carousel
+                    v-if="displayUrls.length > 1"
+                    class="goods-hero__carousel"
+                    height="240px"
+                    :autoplay="false"
+                    arrow="hover"
+                    indicator-position="none"
+                >
+                  <el-carousel-item
+                      v-for="(url, index) in displayUrls"
+                      :key="url"
+                  >
+                    <img
+                        :src="url"
+                        :alt="`${goods.goodsName} 图片${index + 1}`"
+                        class="goods-hero__img"
+                        @error="handleImgError(index)"
+                    />
+                  </el-carousel-item>
+                </el-carousel>
+
+                <img
+                    v-else-if="displayUrls.length === 1"
+                    :src="displayUrls[0]"
+                    :alt="goods.goodsName"
+                    class="goods-hero__img"
+                    @error="handleImgError(0)"
+                />
+
+                <div
+                    v-else
+                    class="goods-hero__fallback"
+                    :class="`cover--${coverTheme}`"
+                >
+                  <el-icon><ShoppingBag /></el-icon>
+                  <span>{{ categoryName || '未分类' }}</span>
+                </div>
               </div>
 
               <div class="goods-hero__info">
@@ -56,6 +91,12 @@
                 <div class="goods-hero__time">
                   <el-icon><Clock /></el-icon>
                   发布于 {{ formatDateTime(goods.createTime) }}
+                  <el-divider direction="vertical" />
+                  <el-icon><View /></el-icon>
+                  {{ goods.viewCount ?? 0 }} 次浏览
+                  <el-divider direction="vertical" />
+                  <el-icon><Star /></el-icon>
+                  {{ goods.favoriteCount ?? 0 }} 人收藏
                 </div>
               </div>
 
@@ -271,7 +312,8 @@ import {
   ChatDotRound,
   User,
   ShoppingBag,
-  ShoppingCart
+  ShoppingCart,
+  View
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
@@ -326,16 +368,35 @@ const roleTagMap = {
   student: 'success'
 }
 
-// 封面 / 头像配色按 ID 轮转（颜色取自全局设计令牌）
+// 封面 / 头像配色按 ID 轮转（莫兰迪色系，与全局设计令牌一致）
 const coverTheme = computed(() => {
-  const themes = ['teal', 'blue', 'purple', 'orange']
+  const themes = ['cream', 'rose', 'lavender', 'sage']
   const seed = goods.value.categoryId ?? goodsId ?? 0
   return themes[Math.abs(seed) % themes.length]
 })
 
 const avatarTheme = (userId) => {
-  const themes = ['teal', 'blue', 'purple', 'orange']
+  const themes = ['cream', 'rose', 'lavender', 'sage']
   return themes[Math.abs(Number(userId) || 0) % themes.length]
+}
+
+// =========================
+// 商品图片：详情页展示（多图轮播 / 单图 / 无图色块兜底）
+// =========================
+
+const imageUrls = ref([])
+
+// 加载失败的图片下标集合：失败图片自动从展示列表剔除，全部失败回退色块
+const failedUrls = ref(new Set())
+
+const displayUrls = computed(() => {
+  return imageUrls.value.filter((_, index) => !failedUrls.value.has(index))
+})
+
+const handleImgError = (index) => {
+  const next = new Set(failedUrls.value)
+  next.add(index)
+  failedUrls.value = next
 }
 
 
@@ -354,11 +415,12 @@ const loadPage = async () => {
 
   loading.value = true
 
-  const [detailRes, favRes, msgRes, catRes] = await Promise.allSettled([
+  const [detailRes, favRes, msgRes, catRes, imgRes] = await Promise.allSettled([
     request.get(`/goods/${goodsId}`),
     request.get(`/favorite/check/${goodsId}`),
     request.get(`/messages/goods/${goodsId}`),
-    request.get('/categories')
+    request.get('/categories'),
+    request.get(`/goods/${goodsId}/images`)
   ])
 
   // 商品详情：主链路，拿不到数据直接走“商品不存在”
@@ -385,10 +447,36 @@ const loadPage = async () => {
     categories.value = Array.isArray(catRes.value) ? catRes.value : []
   }
 
+  // 商品图片列表（主图在前，加载失败默认无图走色块兜底）
+  if (imgRes.status === 'fulfilled' && Array.isArray(imgRes.value)) {
+    imageUrls.value = imgRes.value
+  }
+
   loading.value = false
+
+  // 浏览量上报：商品加载成功后调用，后端原子 +1 并返回最新值
+  reportView()
 
   // 卖家信息依赖商品详情中的 userId，在商品加载成功后单独请求
   loadSeller()
+}
+
+// =========================
+// 浏览量上报：POST /goods/{id}/view
+// 后端判断：商品不存在不加、本人浏览不加；返回自增后的最新浏览量
+// 前端不自行修改数值，以数据库真实值回显
+// =========================
+
+const reportView = async () => {
+  try {
+    const result = await request.post(`/goods/${goodsId}/view`)
+
+    if (result && typeof result.viewCount === 'number' && result.viewCount >= 0) {
+      goods.value.viewCount = result.viewCount
+    }
+  } catch (error) {
+    // 浏览上报失败不影响页面浏览
+  }
 }
 
 const loadSeller = async () => {
@@ -596,6 +684,24 @@ onMounted(loadPage)
   height: 240px;
   flex-shrink: 0;
   border-radius: var(--brand-radius-lg);
+  overflow: hidden;
+}
+
+.goods-hero__carousel :deep(.el-carousel__container) {
+  height: 240px;
+}
+
+.goods-hero__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 无图兜底：莫兰迪色块（与商品卡片同一套配色） */
+.goods-hero__fallback {
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -605,29 +711,29 @@ onMounted(loadPage)
   font-weight: 600;
 }
 
-.goods-hero__cover .el-icon {
+.goods-hero__fallback .el-icon {
   font-size: 56px;
   opacity: 0.5;
 }
 
-.cover--teal {
-  background: linear-gradient(135deg, #d9f0f0 0%, #eef8f7 100%);
-  color: var(--brand-primary);
+.cover--cream {
+  background: linear-gradient(135deg, #f5efe6 0%, #fbf6ed 100%);
+  color: #a89880;
 }
 
-.cover--blue {
-  background: linear-gradient(135deg, #e3eefc 0%, #f2f7fe 100%);
-  color: #3b82f6;
+.cover--rose {
+  background: linear-gradient(135deg, #f4dcd8 0%, #fbeae7 100%);
+  color: #b08380;
 }
 
-.cover--purple {
-  background: linear-gradient(135deg, #ece7fc 0%, #f6f3fe 100%);
-  color: #8b5cf6;
+.cover--lavender {
+  background: linear-gradient(135deg, #d8d4e0 0%, #ebe7f0 100%);
+  color: #7d7593;
 }
 
-.cover--orange {
-  background: linear-gradient(135deg, #ffe9dc 0%, #fff4ec 100%);
-  color: var(--brand-accent);
+.cover--sage {
+  background: linear-gradient(135deg, #c8d4cb 0%, #e2ebe4 100%);
+  color: #6b8470;
 }
 
 .goods-hero__info {
@@ -743,20 +849,21 @@ onMounted(loadPage)
   color: #fff;
 }
 
-.avatar--teal {
-  background: var(--brand-primary);
+/* 莫兰迪头像色 */
+.avatar--cream {
+  background: #b3a184;
 }
 
-.avatar--blue {
-  background: #3b82f6;
+.avatar--rose {
+  background: #c9a0a0;
 }
 
-.avatar--purple {
-  background: #8b5cf6;
+.avatar--lavender {
+  background: #9c93b5;
 }
 
-.avatar--orange {
-  background: var(--brand-accent);
+.avatar--sage {
+  background: #86a08c;
 }
 
 .message-item__body {
@@ -880,6 +987,10 @@ onMounted(loadPage)
 
   .goods-hero__cover {
     width: 100%;
+    height: 180px;
+  }
+
+  .goods-hero__carousel :deep(.el-carousel__container) {
     height: 180px;
   }
 }

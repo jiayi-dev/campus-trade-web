@@ -92,7 +92,7 @@ const displayValue = computed(() => props.value ?? 0)
   margin-right: 2px;
 }
 
-/* 四种主题色（图标底色 + 图标颜色） */
+/* 四种主题色（图标底色 + 图标颜色，莫兰迪低饱和） */
 .stat-card--teal .stat-card__icon {
   background: var(--brand-primary-soft);
   color: var(--brand-primary);
@@ -108,13 +108,13 @@ const displayValue = computed(() => props.value ?? 0)
 }
 
 .stat-card--blue .stat-card__icon {
-  background: #eaf2fe;
-  color: #3b82f6;
+  background: #e9e4f0;
+  color: #8a7fae;
 }
 
 .stat-card--purple .stat-card__icon {
-  background: #f1edfe;
-  color: #8b5cf6;
+  background: #f3e6ea;
+  color: #b58a9c;
 }
 
 </style>

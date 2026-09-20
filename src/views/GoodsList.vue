@@ -167,8 +167,11 @@
             :goods="goods"
             :category-name="getCategoryName(goods.categoryId)"
             :editable="goods.userId === currentUserId"
+            :favorite="favoriteIds.has(goods.goodsId)"
+            :fav-loading="favLoadingId === goods.goodsId"
             @edit="handleEdit"
             @delete="handleDelete"
+            @toggle-favorite="handleToggleFavorite"
         />
       </div>
 
@@ -287,7 +290,7 @@
     <el-dialog
         v-model="dialogVisible"
         :title="isEdit ? '编辑商品' : '发布商品'"
-        width="520px"
+        width="640px"
     >
 
       <el-form label-width="90px">
@@ -368,6 +371,28 @@
               :rows="4"
               placeholder="请输入商品描述"
           />
+        </el-form-item>
+
+        <el-form-item label="商品图片">
+          <el-upload
+              v-model:file-list="uploadFileList"
+              action="/api/upload/image"
+              name="file"
+              list-type="picture-card"
+              :headers="uploadHeaders"
+              :limit="9"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              :before-upload="beforeImageUpload"
+              :on-success="handleUploadSuccess"
+              :on-error="handleUploadError"
+          >
+            <el-icon><Plus /></el-icon>
+            <template #tip>
+              <div class="form-upload-tip">
+                选择图片后立即上传，最多 9 张、单张不超过 5MB，第一张将作为列表封面主图
+              </div>
+            </template>
+          </el-upload>
         </el-form-item>
 
       </el-form>
@@ -495,6 +520,10 @@ const pageSize = ref(12)
 const total = ref(0)
 const loading = ref(false)
 
+// 收藏状态集合（当前用户已收藏的商品ID）+ 正在切换收藏的商品ID（防重复点击）
+const favoriteIds = ref(new Set())
+const favLoadingId = ref(null)
+
 // 当前是否存在筛选条件（用于空状态文案与按钮）
 const hasFilters = computed(() => {
   return !!(goodsName.value || categoryId.value
@@ -603,10 +632,81 @@ const loadGoods = async () => {
     goodsList.value = result.list || []
     total.value = result.total || 0
 
+    // 商品列表加载成功后，一次请求回显整页卡片的收藏状态
+    loadFavoriteStates()
+
   } catch (error) {
     // request.js 已经统一提示错误
   } finally {
     loading.value = false
+  }
+}
+
+
+// =========================
+// 收藏状态回显与切换（列表页直接收藏，无需进入详情页）
+// =========================
+
+// 批量查询当前页商品的收藏状态（一次请求，避免每张卡片单独请求）
+const loadFavoriteStates = async () => {
+  const ids = goodsList.value
+      .filter(g => g.userId !== currentUserId)
+      .map(g => g.goodsId)
+
+  if (ids.length === 0) {
+    favoriteIds.value = new Set()
+    return
+  }
+
+  try {
+    const result = await request.get('/favorite/checkBatch', {
+      params: { goodsIds: ids.join(',') }
+    })
+
+    favoriteIds.value = new Set(result.favoriteGoodsIds || [])
+  } catch (error) {
+    // 收藏状态回显失败不阻塞列表浏览，默认全部未收藏
+    favoriteIds.value = new Set()
+  }
+}
+
+// 收藏 / 取消收藏：后端幂等（重复收藏只刷新时间不重复计数），
+// 前端再以 favLoadingId 防止连点导致的并发请求
+const handleToggleFavorite = async (goodsId) => {
+  if (favLoadingId.value !== null) return
+
+  const goods = goodsList.value.find(g => g.goodsId === goodsId)
+  if (!goods) return
+
+  const isFav = favoriteIds.value.has(goodsId)
+
+  favLoadingId.value = goodsId
+
+  try {
+    const result = isFav
+        ? await request.delete(`/favorite/${goodsId}`)
+        : await request.post(`/favorite/${goodsId}`)
+
+    if (result === '收藏成功' || result === '已取消收藏') {
+      // 本地同步：收藏集合增减 + favorite_count 实时 +1/-1（无需重新拉列表）
+      const next = new Set(favoriteIds.value)
+      if (isFav) {
+        next.delete(goodsId)
+        goods.favoriteCount = Math.max((goods.favoriteCount ?? 0) - 1, 0)
+      } else {
+        next.add(goodsId)
+        goods.favoriteCount = (goods.favoriteCount ?? 0) + 1
+      }
+      favoriteIds.value = next
+      ElMessage.success(result)
+    } else {
+      // 业务失败：自己的商品 / 已下架 / 商品不存在等，后端文本直接透出
+      ElMessage.error(result || '操作失败，请稍后再试')
+    }
+  } catch (error) {
+    // request.js 已经统一提示错误
+  } finally {
+    favLoadingId.value = null
   }
 }
 
@@ -650,6 +750,66 @@ const isEdit = ref(false)
 const batchDialogVisible = ref(false)
 const batchGoodsList = ref([])
 
+// ===== 图片上传状态 =====
+// el-upload 直传 /api/upload/image（不走 axios 实例），手动携带 Token
+const uploadFileList = ref([])
+
+const uploadHeaders = computed(() => ({
+  Authorization: `Bearer ${localStorage.getItem('token')}`
+}))
+
+// 统一取当前图片 URL 列表：已上传文件取服务端返回的 url，
+// 编辑回显的历史图片直接取 entry.url
+const getImageUrls = () => {
+  return uploadFileList.value
+      .map(f => (f.response && f.response.url) ? f.response.url : f.url)
+      .filter(Boolean)
+}
+
+// 上传前校验：类型白名单 + 5MB（后端 UploadController 有同规则兜底）
+const beforeImageUpload = (file) => {
+  const allowTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  if (!allowTypes.includes(file.type)) {
+    ElMessage.warning('仅支持 jpg / png / gif / webp 格式图片')
+    return false
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('图片大小不能超过 5MB')
+    return false
+  }
+  return true
+}
+
+// 上传成功：后端 HTTP 200 + {url} 或 {error}（项目既有风格），按字段区分
+const handleUploadSuccess = (response, uploadFile) => {
+  if (response && response.url) {
+    uploadFile.url = response.url
+    return
+  }
+  // 失败：从列表中移除该文件并提示原因
+  const index = uploadFileList.value.findIndex(f => f.uid === uploadFile.uid)
+  if (index > -1) {
+    uploadFileList.value.splice(index, 1)
+  }
+  ElMessage.error((response && response.error) || '图片上传失败')
+}
+
+const handleUploadError = () => {
+  ElMessage.error('图片上传失败，请检查网络后重试')
+}
+
+// 把当前图片列表保存到 goods_image 表（发布成功后 / 编辑保存时调用）
+const saveGoodsImages = async (goodsId) => {
+  const result = await request.post(`/goods/${goodsId}/images`, {
+    imageUrls: getImageUrls()
+  })
+
+  if (result !== '商品图片保存成功') {
+    // 图片保存失败不阻断商品主流程，但要明确告知
+    ElMessage.warning(result || '商品图片保存失败')
+  }
+}
+
 const form = ref({
   goodsId: null,
   userId: null,
@@ -681,6 +841,9 @@ const handleAdd = () => {
     campus: '',
     location: ''
   }
+
+  // 新发布：清空图片列表
+  uploadFileList.value = []
 
   dialogVisible.value = true
 }
@@ -730,6 +893,21 @@ const handleEdit = async (goodsId) => {
       location: result.location || ''
     }
 
+    // 回显已有图片（主图在前），回显失败不阻塞编辑
+    uploadFileList.value = []
+    try {
+      const urls = await request.get(`/goods/${goodsId}/images`)
+      uploadFileList.value = (Array.isArray(urls) ? urls : []).map(
+          (url, index) => ({
+            name: `图片${index + 1}`,
+            url,
+            status: 'success'
+          })
+      )
+    } catch (error) {
+      // 忽略图片回显失败
+    }
+
     dialogVisible.value = true
 
   } catch (error) {
@@ -764,6 +942,9 @@ const handleSave = async () => {
 
       // 后端业务失败以文本返回（HTTP 仍为 200），需按内容区分
       if (result === '商品修改成功') {
+        // 编辑场景：全量替换商品图片（先删后插幂等，增删改图都走这里）
+        await saveGoodsImages(form.value.goodsId)
+
         ElMessage.success(result)
         dialogVisible.value = false
         loadGoods()
@@ -778,6 +959,13 @@ const handleSave = async () => {
       })
 
       if (String(result).startsWith('商品发布成功')) {
+        // 发布场景：从返回文本解析新商品ID，把已上传图片关联到该商品
+        const match = String(result).match(/商品ID：(\d+)/)
+
+        if (match) {
+          await saveGoodsImages(Number(match[1]))
+        }
+
         ElMessage.success(result)
         dialogVisible.value = false
         loadGoods()
@@ -1079,6 +1267,14 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 上传提示 */
+.form-upload-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--brand-text-secondary);
 }
 
 </style>

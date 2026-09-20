@@ -17,7 +17,7 @@
             注册账号<br />开启校园闲置之旅
           </div>
           <div class="auth-brand__subtitle">
-            注册后默认获得学生身份，可浏览商品、发布闲置、留言咨询与下单交易。
+            注册后默认获得学生身份，可浏览商品、收藏好物、留言咨询与下单交易。
           </div>
 
           <div class="auth-brand__features">
@@ -27,7 +27,7 @@
             </div>
             <div class="auth-brand__feature">
               <el-icon><ShoppingBag /></el-icon>
-              买到实惠好物，也能卖掉闲置
+              买到实惠好物，晒出你的闲置生活
             </div>
             <div class="auth-brand__feature">
               <el-icon><Lock /></el-icon>
@@ -39,8 +39,17 @@
 
       <!-- 右侧注册表单 -->
       <div class="auth-form">
-        <h2 class="auth-form__title">学生注册</h2>
+        <h2 class="auth-form__title">注册账号</h2>
         <p class="auth-form__subtitle">填写以下信息，完成后即可登录</p>
+
+        <!-- 身份说明：默认学生身份，卖家走申请审核，管理员不开放注册 -->
+        <el-alert
+            class="auth-form__role-tip"
+            type="info"
+            :closable="false"
+            show-icon
+            title="注册后默认为学生身份；如需发布商品，登录后可申请成为卖家（管理员账号不开放注册）"
+        />
 
         <el-form
             ref="formRef"

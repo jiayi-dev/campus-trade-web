@@ -9,7 +9,7 @@
     <!-- 封面区：有主图显示图片，无图用分类色块占位 -->
     <div class="goods-card__cover" :class="`cover--${coverTheme}`">
       <img
-          v-if="goods.imageUrl"
+          v-if="goods.imageUrl && !imgError"
           :src="goods.imageUrl"
           :alt="goods.goodsName"
           class="goods-card__image"
@@ -39,6 +39,20 @@
       >
         {{ conditionLabel }}
       </span>
+
+      <!-- 收藏按钮：右下角，无需进入详情页即可收藏/取消收藏
+           自己发布的商品不显示（后端同样会拒绝），请求中禁用防重复点击 -->
+      <button
+          v-if="!editable"
+          class="goods-card__fav"
+          :class="{ 'is-fav': favorite }"
+          :disabled="favLoading"
+          :title="favorite ? '点击取消收藏' : '点击收藏'"
+          @click.stop="$emit('toggle-favorite', goods.goodsId)"
+      >
+        <el-icon><StarFilled v-if="favorite" /><Star v-else /></el-icon>
+        {{ goods.favoriteCount ?? 0 }}
+      </button>
     </div>
 
     <!-- 信息区 -->
@@ -67,7 +81,8 @@
           {{ formatPrice(goods.price) }}
         </span>
         <div class="goods-card__stats">
-          <span class="stat-item" :title="`收藏 ${goods.favoriteCount ?? 0}`">
+          <!-- 自己的商品：收藏按钮被隐藏，这里保留静态收藏数展示 -->
+          <span v-if="editable" class="stat-item" :title="`收藏 ${goods.favoriteCount ?? 0}`">
             <el-icon><Star /></el-icon>{{ goods.favoriteCount ?? 0 }}
           </span>
           <span class="stat-item" :title="`浏览 ${goods.viewCount ?? 0}`">
@@ -124,13 +139,24 @@ const props = defineProps({
     default: ''
   },
   // 是否展示编辑/删除操作（归属人可见；权限最终由后端校验）
+  // 归属人 = 自己发布的商品，同时用于隐藏收藏按钮
   editable: {
     type: Boolean,
     default: true
+  },
+  // 当前用户是否已收藏该商品（父组件批量查询后传入）
+  favorite: {
+    type: Boolean,
+    default: false
+  },
+  // 收藏请求进行中（父组件按商品ID维度的 loading，防重复点击）
+  favLoading: {
+    type: Boolean,
+    default: false
   }
 })
 
-defineEmits(['edit', 'delete'])
+defineEmits(['edit', 'delete', 'toggle-favorite'])
 
 // 进入商品详情 /goods/:id
 const goDetail = () => {
@@ -264,6 +290,53 @@ const handleImgError = () => {
 .condition--3 { background: #c79564; }  /* 95新：莫兰迪橙 */
 .condition--4 { background: #a58880; }  /* 9成新：莫兰迪棕 */
 .condition--5 { background: #9a9590; }  /* 8成新及以下：莫兰迪灰 */
+
+/* 封面右下角收藏按钮 */
+.goods-card__fav {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 11px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(63, 61, 77, 0.14);
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.goods-card__fav .el-icon {
+  font-size: 13px;
+}
+
+.goods-card__fav:hover {
+  transform: scale(1.08);
+  color: var(--brand-accent);
+}
+
+.goods-card__fav.is-fav {
+  background: var(--brand-accent);
+  color: #fff;
+}
+
+.goods-card__fav.is-fav:hover {
+  color: #fff;
+}
+
+.goods-card__fav:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
 
 /* 信息区 */
 .goods-card__body {
