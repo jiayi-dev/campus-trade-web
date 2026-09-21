@@ -368,15 +368,15 @@ const roleTagMap = {
   student: 'success'
 }
 
-// 封面 / 头像配色按 ID 轮转（莫兰迪色系，与全局设计令牌一致）
+// 封面 / 头像配色按 ID 轮转（浅粉→浅黄主题，与全局设计令牌一致）
 const coverTheme = computed(() => {
-  const themes = ['cream', 'rose', 'lavender', 'sage']
+  const themes = ['cream', 'rose', 'yellow', 'sage']
   const seed = goods.value.categoryId ?? goodsId ?? 0
   return themes[Math.abs(seed) % themes.length]
 })
 
 const avatarTheme = (userId) => {
-  const themes = ['cream', 'rose', 'lavender', 'sage']
+  const themes = ['cream', 'rose', 'yellow', 'sage']
   return themes[Math.abs(Number(userId) || 0) % themes.length]
 }
 
@@ -717,23 +717,23 @@ onMounted(loadPage)
 }
 
 .cover--cream {
-  background: linear-gradient(135deg, #f5efe6 0%, #fbf6ed 100%);
-  color: #a89880;
+  background: linear-gradient(135deg, #fdf6e3 0%, #fbf0d8 100%);
+  color: #b8985a;
 }
 
 .cover--rose {
-  background: linear-gradient(135deg, #f4dcd8 0%, #fbeae7 100%);
-  color: #b08380;
+  background: linear-gradient(135deg, #f5d9dc 0%, #fce6e8 100%);
+  color: #c0848a;
 }
 
-.cover--lavender {
-  background: linear-gradient(135deg, #d8d4e0 0%, #ebe7f0 100%);
-  color: #7d7593;
+.cover--yellow {
+  background: linear-gradient(135deg, #f5e4b8 0%, #fbeec8 100%);
+  color: #b8985a;
 }
 
 .cover--sage {
-  background: linear-gradient(135deg, #c8d4cb 0%, #e2ebe4 100%);
-  color: #6b8470;
+  background: linear-gradient(135deg, #d2d8de 0%, #e2e8ec 100%);
+  color: #70808c;
 }
 
 .goods-hero__info {
@@ -849,21 +849,21 @@ onMounted(loadPage)
   color: #fff;
 }
 
-/* 莫兰迪头像色 */
+/* 浅粉→浅黄头像色（无紫色） */
 .avatar--cream {
-  background: #b3a184;
+  background: #b8985a;
 }
 
 .avatar--rose {
-  background: #c9a0a0;
+  background: #c0848a;
 }
 
-.avatar--lavender {
-  background: #9c93b5;
+.avatar--yellow {
+  background: #d4b366;
 }
 
 .avatar--sage {
-  background: #86a08c;
+  background: #70808c;
 }
 
 .message-item__body {
@@ -913,8 +913,8 @@ onMounted(loadPage)
 }
 
 .fav-btn.fav-active:hover {
-  background: #f26a32;
-  border-color: #f26a32;
+  background: var(--brand-accent-hover);
+  border-color: var(--brand-accent-hover);
   color: #fff;
 }
 

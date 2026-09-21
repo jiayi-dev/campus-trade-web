@@ -108,13 +108,13 @@ const displayValue = computed(() => props.value ?? 0)
 }
 
 .stat-card--blue .stat-card__icon {
-  background: #e9e4f0;
-  color: #8a7fae;
+  background: var(--brand-aux-soft);
+  color: var(--brand-aux);
 }
 
 .stat-card--purple .stat-card__icon {
-  background: #f3e6ea;
-  color: #b58a9c;
+  background: var(--brand-accent-soft);
+  color: var(--brand-accent-hover);
 }
 
 </style>

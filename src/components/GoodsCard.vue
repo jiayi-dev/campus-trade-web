@@ -121,7 +121,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ShoppingBag, Clock, EditPen, Delete,
-  Star, View, Location, Position, Folder
+  Star, StarFilled, View, Location, Position, Folder
 } from '@element-plus/icons-vue'
 import { formatPrice, formatRelativeTime } from '../utils/format'
 
@@ -178,8 +178,8 @@ const conditionLabel = computed(
     () => CONDITION_MAP[props.goods.conditionLevel] || ''
 )
 
-// 封面配色按分类轮转（莫兰迪色系，与全局设计令牌一致）
-const coverThemes = ['cream', 'rose', 'lavender', 'sage']
+// 封面配色按分类轮转（浅粉→浅黄主题，与全局设计令牌一致）
+const coverThemes = ['cream', 'rose', 'yellow', 'sage']
 const coverTheme = computed(() => {
   const seed = props.goods.categoryId ?? props.goods.goodsId ?? 0
   return coverThemes[Math.abs(seed) % coverThemes.length]
@@ -225,25 +225,25 @@ const handleImgError = () => {
   overflow: hidden;
 }
 
-/* 莫兰迪色系封面（无图占位） */
+/* 浅粉→浅黄封面色（无图占位），少量柔和灰蓝作辅助 */
 .cover--cream {
-  background: linear-gradient(135deg, #f5efe6 0%, #fbf6ed 100%);
-  color: #a89880;
+  background: linear-gradient(135deg, #fdf6e3 0%, #fbf0d8 100%);
+  color: #b8985a;
 }
 
 .cover--rose {
-  background: linear-gradient(135deg, #f4dcd8 0%, #fbeae7 100%);
-  color: #b08380;
+  background: linear-gradient(135deg, #f5d9dc 0%, #fce6e8 100%);
+  color: #c0848a;
 }
 
-.cover--lavender {
-  background: linear-gradient(135deg, #d8d4e0 0%, #ebe7f0 100%);
-  color: #7d7593;
+.cover--yellow {
+  background: linear-gradient(135deg, #f5e4b8 0%, #fbeec8 100%);
+  color: #b8985a;
 }
 
 .cover--sage {
-  background: linear-gradient(135deg, #c8d4cb 0%, #e2ebe4 100%);
-  color: #6b8470;
+  background: linear-gradient(135deg, #d2d8de 0%, #e2e8ec 100%);
+  color: #70808c;
 }
 
 .goods-card__image {
@@ -391,8 +391,8 @@ const handleImgError = () => {
 }
 
 .tag--campus {
-  background: #e7e3f0;
-  color: #6b6480;
+  background: #dde3e8;
+  color: #70808c;
 }
 
 /* 价格 + 收藏/浏览 */

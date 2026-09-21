@@ -1,33 +1,38 @@
 /* ============================================================
  * 校园二手交易平台 V1.1 全局设计系统
- * 设计概念：「奶油市集」—— 莫兰迪低饱和色系
- *           灰蓝主色（校园/清爽）+ 陶土强调色（价格/重点）
- *           + 奶油底色 + 浅粉/浅黄/灰紫辅助 + 白色卡片
+ * 设计概念：「校园市集」—— 浅粉 → 浅黄 低饱和色系
+ *           浅粉主色（温柔/校园/年轻）+ 浅黄强调色（价格/重点）
+ *           + 奶油底色 + 深灰文字 + 少量柔和灰蓝辅助 + 白色卡片
  * 分为三层：① 设计令牌  ② Element Plus 主题覆盖  ③ 基础与公共样式
  * ============================================================ */
 
 /* ========== ① 设计令牌（Design Tokens） ========== */
 
 :root {
-  /* 品牌主色：灰蓝（莫兰迪蓝） */
-  --brand-primary: #7c90a8;
-  --brand-primary-hover: #6a7d95;
-  --brand-primary-active: #59697f;
-  --brand-primary-soft: #eef1f5;
+  /* 品牌主色：浅粉（温柔、年轻、校园感） */
+  --brand-primary: #d8a8ad;
+  --brand-primary-hover: #c8969b;
+  --brand-primary-active: #b5838a;
+  --brand-primary-soft: #f6e6e8;
 
-  /* 强调色：陶土（价格、提醒），莫兰迪暖调 */
-  --brand-accent: #c98a5e;
-  --brand-accent-soft: #f9efe7;
+  /* 强调色：浅黄（价格、提醒、收藏高亮），温暖 */
+  --brand-accent: #c9a85c;
+  --brand-accent-hover: #b8985a;
+  --brand-accent-soft: #f5edd6;
 
-  /* 文字：紫灰调 */
-  --brand-text: #3f3d4d;
-  --brand-text-regular: #6b6879;
-  --brand-text-secondary: #9d9aa8;
+  /* 辅助色：柔和灰蓝（少量用于辅助元素，避免大面积） */
+  --brand-aux: #7a8590;
+  --brand-aux-soft: #dde3e8;
+
+  /* 文字：暖深灰（不带紫调） */
+  --brand-text: #4a4548;
+  --brand-text-regular: #736c70;
+  --brand-text-secondary: #a09598;
 
   /* 边框 / 背景：奶油底 */
-  --brand-border: #e9e4dc;
-  --brand-bg: #faf7f2;
-  --brand-bg-soft: #f4f0e9;
+  --brand-border: #ece5dd;
+  --brand-bg: #fbf6f0;
+  --brand-bg-soft: #f5ede3;
   --brand-white: #ffffff;
 
   /* 圆角 */
@@ -36,17 +41,17 @@
   --brand-radius-lg: 16px;
   --brand-radius-xl: 20px;
 
-  /* 阴影（带紫灰冷调，过渡自然） */
-  --brand-shadow-sm: 0 2px 10px rgba(63, 61, 77, 0.05);
-  --brand-shadow: 0 8px 24px rgba(63, 61, 77, 0.08);
-  --brand-shadow-lg: 0 18px 48px rgba(63, 61, 77, 0.16);
+  /* 阴影（暖灰调，过渡自然） */
+  --brand-shadow-sm: 0 2px 10px rgba(74, 69, 72, 0.05);
+  --brand-shadow: 0 8px 24px rgba(74, 69, 72, 0.08);
+  --brand-shadow-lg: 0 18px 48px rgba(74, 69, 72, 0.16);
 
-  /* 侧边栏深色渐变（灰蓝紫） */
+  /* 侧边栏深色渐变（暖棕→玫瑰，无紫色） */
   --brand-sidebar-gradient: linear-gradient(
     180deg,
-    #45485e 0%,
-    #5d6078 52%,
-    #767a92 100%
+    #6e5559 0%,
+    #8c6f74 52%,
+    #aa8d92 100%
   );
 
   --brand-font:
@@ -59,12 +64,12 @@
 /* 主色及其色阶（覆盖后按钮/分页/菜单/标签页等全站自动生效） */
 :root {
   --el-color-primary: var(--brand-primary);
-  --el-color-primary-light-3: #a3b2c6;
-  --el-color-primary-light-5: #c0c9d7;
-  --el-color-primary-light-7: #d8dde5;
-  --el-color-primary-light-8: #e5e9ee;
+  --el-color-primary-light-3: #e2b9bd;
+  --el-color-primary-light-5: #ebd2d5;
+  --el-color-primary-light-7: #f0dee0;
+  --el-color-primary-light-8: #f4e8ea;
   --el-color-primary-light-9: var(--brand-primary-soft);
-  --el-color-primary-dark-2: #59697f;
+  --el-color-primary-dark-2: #b5838a;
 
   --el-border-radius-base: var(--brand-radius-sm);
   --el-border-radius-small: 4px;
@@ -121,12 +126,12 @@ a {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(124, 144, 168, 0.28);
+  background: rgba(216, 168, 173, 0.32);
   border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(124, 144, 168, 0.48);
+  background: rgba(216, 168, 173, 0.52);
 }
 
 ::-webkit-scrollbar-track {
@@ -173,11 +178,11 @@ a {
   border-radius: var(--brand-radius-sm);
 }
 
-/* 表格：奶油表头 + 灰蓝悬停 */
+/* 表格：奶油表头 + 浅粉悬停 */
 .el-table {
   --el-table-header-bg-color: var(--brand-bg-soft);
   --el-table-header-text-color: var(--brand-text-regular);
-  --el-table-row-hover-bg-color: #f5f2ec;
+  --el-table-row-hover-bg-color: #f8eee9;
   border-radius: var(--brand-radius);
 }
 
@@ -253,20 +258,20 @@ a {
   background:
     radial-gradient(
       circle at 12% 18%,
-      rgba(212, 169, 184, 0.30),
+      rgba(216, 168, 173, 0.32),
       transparent 42%
     ),
     radial-gradient(
       circle at 88% 12%,
-      rgba(235, 215, 170, 0.32),
+      rgba(201, 168, 92, 0.30),
       transparent 40%
     ),
     radial-gradient(
       circle at 80% 92%,
-      rgba(160, 175, 200, 0.28),
+      rgba(216, 180, 188, 0.22),
       transparent 45%
     ),
-    linear-gradient(135deg, #f7efe9 0%, #faf7f2 55%, #eef0f5 100%);
+    linear-gradient(135deg, #fbeae6 0%, #fbf6f0 55%, #fdf6e3 100%);
 }
 
 .auth-card {
@@ -312,7 +317,7 @@ a {
   height: 150px;
   left: -60px;
   bottom: -40px;
-  background: rgba(212, 169, 184, 0.25);
+  background: rgba(255, 224, 226, 0.30);
 }
 
 .auth-brand__logo {
@@ -347,7 +352,7 @@ a {
   margin-top: 10px;
   font-size: 14px;
   line-height: 1.8;
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .auth-brand__features {
@@ -362,12 +367,12 @@ a {
   align-items: center;
   gap: 10px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.94);
 }
 
 .auth-brand__feature .el-icon {
   font-size: 17px;
-  color: #e8c8d2;
+  color: #ffe0c8;
 }
 
 /* 右侧表单区 */
