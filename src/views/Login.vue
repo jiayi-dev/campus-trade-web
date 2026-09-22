@@ -44,14 +44,9 @@
 
         <!-- 登录身份切换 -->
         <el-tabs v-model="loginType" class="login-tabs">
-          <el-tab-pane name="student">
+          <el-tab-pane name="user">
             <template #label>
-              <span class="tab-label"><el-icon><User /></el-icon>学生登录</span>
-            </template>
-          </el-tab-pane>
-          <el-tab-pane name="seller">
-            <template #label>
-              <span class="tab-label"><el-icon><Shop /></el-icon>卖家登录</span>
+              <span class="tab-label"><el-icon><User /></el-icon>用户登录</span>
             </template>
           </el-tab-pane>
           <el-tab-pane name="admin">
@@ -60,6 +55,12 @@
             </template>
           </el-tab-pane>
         </el-tabs>
+
+        <div class="login-hint">
+          {{ loginType === 'admin'
+              ? '管理员账号请从此入口登录'
+              : '学生与卖家共用入口，系统会按账号真实身份自动识别' }}
+        </div>
 
         <el-form @submit.prevent>
           <el-form-item>
@@ -105,14 +106,15 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Shop, Location, ChatDotRound, Promotion, RefreshRight } from '@element-plus/icons-vue'
+import { User, Lock, Location, ChatDotRound, Promotion, RefreshRight } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import request from '../utils/request'
 
 const router = useRouter()
 
 // 当前登录身份
-const loginType = ref('student')
+// user：学生 / 卖家共用入口；admin：管理员专用入口
+const loginType = ref('user')
 
 // 用户输入
 const username = ref('')
@@ -135,15 +137,18 @@ const handleLogin = async () => {
   try {
 
     // 2. 根据当前选择的身份调用对应的后端登录接口
-    const result = await request.post(
-        `/auth/${loginType.value}/login`,
-        {
-          username: username.value,
-          password: password.value
-        }
-    )
+    //    user → /auth/student/login（后端 studentLogin 已改为通用用户登录，拒绝 admin，不强制 student/seller）
+    //    admin → /auth/admin/login（严格匹配 admin 角色）
+    const endpoint =
+        loginType.value === 'admin' ? '/auth/admin/login' : '/auth/student/login'
+
+    const result = await request.post(endpoint, {
+      username: username.value,
+      password: password.value
+    })
 
     // 3. 保存后端返回的登录信息
+    //    role 是数据库真实角色，不依赖登录入口猜测
     localStorage.setItem('token', result.token)
     localStorage.setItem('userId', result.userId)
     localStorage.setItem('username', result.username)
@@ -153,6 +158,7 @@ const handleLogin = async () => {
     ElMessage.success('登录成功')
 
     // 5. 跳转到首页
+    //    Layout 在 mount 时会再次调用 /auth/me 校准角色，保证真实 role 立即生效
     await router.push('/home')
 
   } catch (error) {
@@ -181,9 +187,17 @@ const handleLogin = async () => {
 }
 
 .login-tabs :deep(.el-tabs__item) {
-  width: 33.33%;
+  width: 50%;
   padding: 0;
   justify-content: center;
+}
+
+.login-hint {
+  margin: -2px 0 14px;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+  text-align: center;
+  line-height: 1.5;
 }
 
 </style>

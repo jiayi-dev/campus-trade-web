@@ -216,7 +216,14 @@ const loadPage = async () => {
     ])
 
     if (meRes.status === 'fulfilled' && meRes.value?.role) {
-      role.value = meRes.value.role
+      const serverRole = meRes.value.role
+      // 真实角色与本地缓存不一致：同步 localStorage 并派发 role-changed 事件，
+      // Layout 监听到后会立即刷新菜单（无需刷新整页）
+      if (serverRole !== role.value) {
+        role.value = serverRole
+        localStorage.setItem('role', serverRole)
+        window.dispatchEvent(new CustomEvent('role-changed', { detail: serverRole }))
+      }
     }
 
     if (appRes.status === 'fulfilled') {

@@ -92,7 +92,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   HomeFilled,
@@ -106,12 +106,50 @@ import {
   RefreshRight,
   Promotion
 } from '@element-plus/icons-vue'
+import request from '../utils/request'
 
 const router = useRouter()
 const route = useRoute()
 
 const username = ref(localStorage.getItem('username') || '')
 const role = ref(localStorage.getItem('role') || '')
+
+// 从后端 /auth/me 拉取数据库真实角色并同步到本地缓存与响应式 role
+// 作用：学生卖家申请被通过后，无需重新登录，下次进入 Layout（包括刷新页面 / 重新登录）
+//      即可拿到 seller 身份；同时也兼容本地缓存被人为篡改的情况
+const refreshRoleFromServer = async () => {
+  try {
+    const me = await request.get('/auth/me')
+    if (me && me.role && me.role !== role.value) {
+      role.value = me.role
+      localStorage.setItem('role', me.role)
+      // 触发本地事件，便于其它依赖角色的组件（如 SellerApply）即时响应
+      window.dispatchEvent(new CustomEvent('role-changed', { detail: me.role }))
+    } else if (me && me.role) {
+      // 即使没变化，也保证 localStorage 与最新值一致
+      localStorage.setItem('role', me.role)
+    }
+  } catch (e) {
+    // /auth/me 失败时保留原 role，不阻断页面渲染
+  }
+}
+
+// 监听来自其它页面（如 SellerApply.vue 在 loadPage 中检测到角色升级时）派发的 role-changed 事件
+const handleRoleChanged = (e) => {
+  const nextRole = e?.detail || localStorage.getItem('role')
+  if (nextRole && nextRole !== role.value) {
+    role.value = nextRole
+  }
+}
+
+onMounted(() => {
+  refreshRoleFromServer()
+  window.addEventListener('role-changed', handleRoleChanged)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('role-changed', handleRoleChanged)
+})
 
 // 菜单配置：名称 / 路径 / 允许角色 / 图标
 const menus = [
