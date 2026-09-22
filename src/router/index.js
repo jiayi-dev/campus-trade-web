@@ -25,8 +25,11 @@ const router = createRouter({
       children: [
         {
           path: 'home',
-          component: () => import('../views/Dashboard.vue'),
-          meta: { title: '数据概览' }
+          component: () => import('../views/Home.vue'),
+          meta: {
+            title: '校园闲置市场',
+            roles: ['student', 'seller', 'admin']
+          }
         },
 
         {

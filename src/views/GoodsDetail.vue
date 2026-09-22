@@ -432,6 +432,9 @@ const loadPage = async () => {
 
   goods.value = detailRes.value
 
+  // 记录最近浏览到 localStorage，首页“最近浏览”区块读取展示（仅本地体验）
+  recordRecentView(goods.value)
+
   // 收藏状态（附加能力，失败默认未收藏）
   if (favRes.status === 'fulfilled') {
     isFavorite.value = !!favRes.value.favorite
@@ -476,6 +479,31 @@ const reportView = async () => {
     }
   } catch (error) {
     // 浏览上报失败不影响页面浏览
+  }
+}
+
+// 最近浏览记录：写入 localStorage，首页“最近浏览”区块读取展示
+// 仅本地体验，不进数据库、不做 UV 去重；最多保留 20 条，最新在前，按 goodsId 去重
+const RECENT_KEY = 'campus_recent_views'
+const recordRecentView = (g) => {
+  if (!g || !g.goodsId) return
+  try {
+    const raw = localStorage.getItem(RECENT_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    const list = Array.isArray(arr) ? arr : []
+    const filtered = list.filter(x => x.goodsId !== g.goodsId)
+    filtered.unshift({
+      goodsId: g.goodsId,
+      goodsName: g.goodsName,
+      price: g.price,
+      imageUrl: g.imageUrl,
+      campus: g.campus,
+      conditionLevel: g.conditionLevel,
+      time: new Date().toISOString()
+    })
+    localStorage.setItem(RECENT_KEY, JSON.stringify(filtered.slice(0, 20)))
+  } catch (e) {
+    // localStorage 不可用或已满，忽略不影响浏览
   }
 }
 
