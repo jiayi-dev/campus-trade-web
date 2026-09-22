@@ -103,7 +103,8 @@ import {
   UserFilled,
   SwitchButton,
   ArrowDown,
-  RefreshRight
+  RefreshRight,
+  Promotion
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -131,6 +132,12 @@ const menus = [
     path: '/orders',
     roles: ['student', 'seller', 'admin'],
     icon: Tickets
+  },
+  {
+    name: '成为卖家',
+    path: '/seller-apply',
+    roles: ['student'],
+    icon: Promotion
   },
   {
     name: '我的店铺',

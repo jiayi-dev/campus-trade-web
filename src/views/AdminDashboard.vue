@@ -271,6 +271,97 @@
 
         </el-tab-pane>
 
+        <!-- ===================== 卖家申请 ===================== -->
+        <el-tab-pane label="卖家申请" name="applications">
+
+          <div class="filter-bar">
+            <el-select
+                v-model="applicationFilter.status"
+                placeholder="审核状态"
+                clearable
+                class="filter-select"
+                @change="resetApplicationPageAndLoad"
+            >
+              <el-option label="待审核" :value="0" />
+              <el-option label="已通过" :value="1" />
+              <el-option label="已拒绝" :value="2" />
+            </el-select>
+            <el-button type="primary" @click="resetApplicationPageAndLoad">查询</el-button>
+            <el-button @click="resetApplicationFilter">重置</el-button>
+          </div>
+
+          <el-table :data="applications" border stripe v-loading="loadingApplications">
+            <el-table-column prop="applicationId" label="申请ID" width="80" />
+            <el-table-column label="申请人" min-width="150">
+              <template #default="scope">
+                <div class="applicant-cell">
+                  <span class="applicant-cell__name">{{ scope.row.username || '已注销用户' }}</span>
+                  <span class="applicant-cell__meta">ID：{{ scope.row.userId }}</span>
+                  <span v-if="scope.row.phone" class="applicant-cell__meta">{{ scope.row.phone }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="申请原因" min-width="220" show-overflow-tooltip>
+              <template #default="scope">{{ scope.row.reason }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="100">
+              <template #default="scope">
+                <el-tag :type="applicationStatusType(scope.row.status)" size="small">
+                  {{ applicationStatusText(scope.row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="提交时间" min-width="160">
+              <template #default="scope">{{ formatDateTime(scope.row.createTime) }}</template>
+            </el-table-column>
+            <el-table-column label="审核人" width="110">
+              <template #default="scope">
+                {{ scope.row.reviewerName || '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="审核时间" min-width="160">
+              <template #default="scope">
+                {{ scope.row.reviewTime ? formatDateTime(scope.row.reviewTime) : '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="190" fixed="right">
+              <template #default="scope">
+                <el-button type="primary" link size="small" @click="openApplicationDetail(scope.row)">
+                  详情
+                </el-button>
+                <template v-if="Number(scope.row.status) === 0">
+                  <el-button
+                      type="success"
+                      link
+                      size="small"
+                      :loading="applicationActionLoading === scope.row.applicationId"
+                      @click="approveApplication(scope.row)"
+                  >通过</el-button>
+                  <el-button
+                      type="danger"
+                      link
+                      size="small"
+                      :loading="applicationActionLoading === scope.row.applicationId"
+                      @click="openRejectDialog(scope.row)"
+                  >拒绝</el-button>
+                </template>
+              </template>
+            </el-table-column>
+            <template #empty><el-empty description="暂无卖家申请" /></template>
+          </el-table>
+
+          <div v-if="applicationTotal > 0" class="pagination">
+            <el-pagination
+                v-model:current-page="applicationPage.pageNum"
+                :page-size="applicationPage.pageSize"
+                :total="applicationTotal"
+                layout="total, prev, pager, next"
+                @current-change="loadApplications"
+            />
+          </div>
+
+        </el-tab-pane>
+
         <!-- ===================== 操作记录 ===================== -->
         <el-tab-pane label="操作记录" name="records">
 
@@ -289,6 +380,90 @@
       </el-tabs>
 
     </el-card>
+
+    <!-- 卖家申请详情对话框 -->
+    <el-dialog
+        v-model="detailDialogVisible"
+        title="卖家申请详情"
+        width="560px"
+    >
+      <el-descriptions v-if="detailApplication" :column="1" border>
+        <el-descriptions-item label="申请ID">
+          {{ detailApplication.applicationId }}
+        </el-descriptions-item>
+        <el-descriptions-item label="申请人">
+          {{ detailApplication.username || '已注销用户' }}（ID：{{ detailApplication.userId }}）
+        </el-descriptions-item>
+        <el-descriptions-item label="手机号">
+          {{ detailApplication.phone || '未填写' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="申请状态">
+          <el-tag :type="applicationStatusType(detailApplication.status)" size="small">
+            {{ applicationStatusText(detailApplication.status) }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="申请原因">
+          <div class="detail-reason">{{ detailApplication.reason }}</div>
+        </el-descriptions-item>
+        <el-descriptions-item label="提交时间">
+          {{ formatDateTime(detailApplication.createTime) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="审核人">
+          {{ detailApplication.reviewerName || '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="审核意见">
+          {{ detailApplication.reviewComment || '—' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="审核时间">
+          {{ detailApplication.reviewTime ? formatDateTime(detailApplication.reviewTime) : '—' }}
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <template #footer>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
+        <el-button
+            v-if="detailApplication && Number(detailApplication.status) === 0"
+            type="danger"
+            @click="openRejectDialog(detailApplication)"
+        >拒绝</el-button>
+        <el-button
+            v-if="detailApplication && Number(detailApplication.status) === 0"
+            type="success"
+            :loading="applicationActionLoading === detailApplication.applicationId"
+            @click="approveApplication(detailApplication)"
+        >通过</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 拒绝申请对话框：审核意见必填 -->
+    <el-dialog
+        v-model="rejectDialogVisible"
+        title="拒绝卖家申请"
+        width="480px"
+        :close-on-click-modal="false"
+    >
+      <div class="reject-tip">
+        确定拒绝用户「{{ rejectForm.username }}」的卖家申请吗？拒绝后该用户仍为学生身份，可修改原因后重新申请。
+      </div>
+      <el-input
+          v-model="rejectForm.comment"
+          type="textarea"
+          :rows="4"
+          maxlength="255"
+          show-word-limit
+          resize="none"
+          placeholder="请填写审核意见（必填，将展示给申请人）"
+      />
+      <template #footer>
+        <el-button @click="rejectDialogVisible = false">取消</el-button>
+        <el-button
+            type="danger"
+            :loading="rejectSubmitting"
+            :disabled="!rejectForm.comment.trim()"
+            @click="submitReject"
+        >确认拒绝</el-button>
+      </template>
+    </el-dialog>
 
   </div>
 </template>
@@ -541,6 +716,164 @@ const loadRecords = async () => {
 
 
 // =========================
+// 卖家申请审核
+// =========================
+
+const applications = ref([])
+const applicationTotal = ref(0)
+const loadingApplications = ref(false)
+const applicationActionLoading = ref(null)
+const applicationFilter = ref({ status: null })
+const applicationPage = ref({ pageNum: 1, pageSize: 8 })
+
+// 详情对话框
+const detailDialogVisible = ref(false)
+const detailApplication = ref(null)
+
+// 拒绝对话框
+const rejectDialogVisible = ref(false)
+const rejectSubmitting = ref(false)
+const rejectForm = ref({ applicationId: null, username: '', comment: '' })
+
+// 状态统一做 Number 归一化，避免字符串/null 导致 tag 或按钮判断失效
+const applicationStatusText = (status) => {
+  switch (Number(status)) {
+    case 0: return '待审核'
+    case 1: return '已通过'
+    case 2: return '已拒绝'
+    default: return '未知'
+  }
+}
+
+const applicationStatusType = (status) => {
+  switch (Number(status)) {
+    case 0: return 'warning'
+    case 1: return 'success'
+    case 2: return 'danger'
+    default: return 'info'
+  }
+}
+
+const loadApplications = async () => {
+  loadingApplications.value = true
+  try {
+    const params = {
+      pageNum: applicationPage.value.pageNum,
+      pageSize: applicationPage.value.pageSize
+    }
+
+    if (applicationFilter.value.status !== null
+        && applicationFilter.value.status !== '') {
+      params.status = applicationFilter.value.status
+    }
+
+    const result = await request.get('/admin/seller-applications', { params })
+
+    applications.value = result.list || []
+    applicationTotal.value = result.total || 0
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    loadingApplications.value = false
+  }
+}
+
+const resetApplicationPageAndLoad = () => {
+  applicationPage.value.pageNum = 1
+  loadApplications()
+}
+
+const resetApplicationFilter = () => {
+  applicationFilter.value.status = null
+  resetApplicationPageAndLoad()
+}
+
+const openApplicationDetail = (row) => {
+  detailApplication.value = row
+  detailDialogVisible.value = true
+}
+
+// 通过：二次确认后调用审核接口
+const approveApplication = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+        `确定通过用户「${row.username || row.userId}」的卖家申请吗？通过后该用户将立即获得卖家身份。`,
+        '通过卖家申请',
+        {
+          confirmButtonText: '确定通过',
+          cancelButtonText: '取消',
+          type: 'success'
+        }
+    )
+  } catch (action) {
+    return
+  }
+
+  applicationActionLoading.value = row.applicationId
+
+  try {
+    const result = await request.put(
+        `/admin/seller-applications/${row.applicationId}/approve`,
+        {}
+    )
+
+    if (result === '申请已通过，用户已成为卖家') {
+      ElMessage.success(result)
+      detailDialogVisible.value = false
+      await Promise.allSettled([loadApplications(), loadRecords()])
+    } else {
+      ElMessage.error(result || '操作失败')
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    applicationActionLoading.value = null
+  }
+}
+
+// 打开拒绝对话框（表格行或详情对话框都可进入）
+const openRejectDialog = (row) => {
+  rejectForm.value = {
+    applicationId: row.applicationId,
+    username: row.username || `用户${row.userId}`,
+    comment: ''
+  }
+  detailDialogVisible.value = false
+  rejectDialogVisible.value = true
+}
+
+const submitReject = async () => {
+  const comment = rejectForm.value.comment.trim()
+
+  if (!comment) {
+    ElMessage.warning('请填写审核意见')
+    return
+  }
+
+  rejectSubmitting.value = true
+
+  try {
+    const result = await request.put(
+        `/admin/seller-applications/${rejectForm.value.applicationId}/reject`,
+        { reviewComment: comment }
+    )
+
+    if (result === '申请已拒绝') {
+      ElMessage.success(result)
+      rejectDialogVisible.value = false
+      await Promise.allSettled([loadApplications(), loadRecords()])
+    } else {
+      ElMessage.error(result || '操作失败')
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    rejectSubmitting.value = false
+  }
+}
+
+
+// =========================
 // 工具方法
 // =========================
 
@@ -557,6 +890,7 @@ const refreshAll = async () => {
 
   if (activeTab.value === 'users') tasks.push(loadUsers())
   if (activeTab.value === 'goods') tasks.push(loadGoods())
+  if (activeTab.value === 'applications') tasks.push(loadApplications())
 
   await Promise.allSettled(tasks)
 }
@@ -577,6 +911,7 @@ onMounted(() => {
   loadCategories()
   loadRecords()
   loadUsers()
+  loadApplications()
 })
 </script>
 
@@ -639,6 +974,43 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 卖家申请：申请人单元格 */
+.applicant-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.4;
+}
+
+.applicant-cell__name {
+  font-weight: 600;
+  color: var(--brand-text);
+}
+
+.applicant-cell__meta {
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+}
+
+/* 详情对话框中的原因文本 */
+.detail-reason {
+  white-space: pre-wrap;
+  line-height: 1.8;
+  color: var(--brand-text-regular);
+}
+
+/* 拒绝对话框提示 */
+.reject-tip {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--brand-text-regular);
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--brand-radius);
 }
 
 @media (max-width: 1100px) {

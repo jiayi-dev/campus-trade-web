@@ -58,6 +58,14 @@ const router = createRouter({
 
         },
         {
+          path: 'seller-apply',
+          component: () => import('../views/SellerApply.vue'),
+          meta: {
+            title: '申请成为卖家',
+            roles: ['student']
+          }
+        },
+        {
           path: 'seller',
           component: () => import('../views/SellerDashboard.vue'),
           meta: {
