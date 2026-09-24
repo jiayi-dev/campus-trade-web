@@ -4,6 +4,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 const router = createRouter({
   history: createWebHistory(),
 
+  // 路由切换后窗口回到顶部：Landing/登录页以 window 为滚动容器，
+  // 从长页面底部点登录时不重置会停在原滚动位置（看起来像空白）。
+  // 业务页滚动发生在 Layout 的 .content 内部容器，不受此影响，其位置恢复逻辑独立。
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    return { top: 0 }
+  },
+
   routes: [
     {
       path: '/login',
@@ -25,11 +33,18 @@ const router = createRouter({
     },
 
     {
+      // 根路径直达品牌落地页（不经过 /home 间接重定向，登录状态不影响该默认入口）。
+      // Layout 仍以 / 为基路径，保证 /home、/goods 等业务 URL 不变；
+      // 命中 '' 索引子路由时立即重定向到 /landing，Layout 不会渲染。
       path: '/',
       component: () => import('../views/Layout.vue'),
-      redirect: '/home',
 
       children: [
+        {
+          // GET / → /landing（公开页，未登录/已登录均先看到品牌入口）
+          path: '',
+          redirect: '/landing'
+        },
         {
           path: 'home',
           component: () => import('../views/Home.vue'),

@@ -235,6 +235,17 @@ a {
     transform 0.22s ease;
 }
 
+/*
+ * 离场中的旧页面固定覆盖视口：默认模式下新旧两个整页同时存在，
+ * 若不脱标会上下堆叠（新页面出现在旧页面下方、首屏看不到）。
+ * 仅 App.vue 的顶层路由过渡使用该类。
+ */
+.fade-leave-active {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+}
+
 .fade-enter-from {
   opacity: 0;
   transform: translateY(8px);

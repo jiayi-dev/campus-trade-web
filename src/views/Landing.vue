@@ -8,10 +8,10 @@
   -->
   <div class="lp">
 
-    <!-- ============ 顶部导航 ============ -->
+    <!-- ============ 顶部导航（品牌官网级：大 logo / 15px 导航 / 明显 CTA 层级 / 滚动高亮） ============ -->
     <header class="nav">
       <div class="nav__inner">
-        <div class="nav__brand" @click="scrollTop">
+        <div class="nav__brand" @click="goLanding">
           <div class="nav__logo"><el-icon><RefreshRight /></el-icon></div>
           <div class="nav__word">
             <span class="nav__name">校园二手</span>
@@ -20,27 +20,35 @@
         </div>
 
         <nav class="nav__links">
-          <a v-for="a in anchors" :key="a.id" @click="scrollTo(a.id)">{{ a.label }}</a>
+          <a
+            v-for="a in anchors"
+            :key="a.id"
+            :class="{ active: activeAnchor === a.id }"
+            @click="scrollTo(a.id)"
+          >{{ a.label }}</a>
         </nav>
 
         <div class="nav__actions">
           <template v-if="isLogin">
-            <button class="lp-btn lp-btn--primary lp-btn--sm" @click="$router.push('/home')">
-              进入市场首页
+            <button class="lp-btn lp-btn--primary lp-btn--sm nav__cta" @click="goMarket">
+              进入市场<el-icon><ArrowRight /></el-icon>
             </button>
           </template>
           <template v-else>
-            <button class="lp-btn lp-btn--text lp-btn--sm" @click="$router.push('/login')">登录</button>
-            <button class="lp-btn lp-btn--primary lp-btn--sm" @click="$router.push('/register')">免费注册</button>
+            <button class="nav__login" @click="goLogin">登录</button>
+            <button class="lp-btn lp-btn--primary lp-btn--sm nav__cta" @click="goRegister">
+              免费注册<el-icon><ArrowRight /></el-icon>
+            </button>
           </template>
         </div>
       </div>
     </header>
 
     <!-- ============ 01 · 品牌 Hero ============ -->
-    <section class="hero" @mousemove="onHeroMove" @mouseleave="resetHero">
-      <!-- 柔和动态背景光斑（奶油粉 / 奶油黄，禁止赛博朋克式强光） -->
+    <section id="top" class="hero" @mousemove="onHeroMove" @mouseleave="resetHero">
+      <!-- 柔和动态背景光斑（裸粉 / 奶杏桃 / 奶油黄，三层低饱和暖色，禁止赛博朋克式强光） -->
       <div class="hero__blob hero__blob--pink" :style="parallax(10)"></div>
+      <div class="hero__blob hero__blob--peach" :style="parallax(14)"></div>
       <div class="hero__blob hero__blob--butter" :style="parallax(16)"></div>
       <div class="hero__grain"></div>
 
@@ -93,7 +101,7 @@
               v-if="heroCards[0]"
               class="hc hc--lg"
               :style="parallax(8)"
-              @click="goMarket"
+              @click="goGoods(heroCards[0].goodsId)"
             >
               <div class="hc__bob" style="animation-delay:.2s">
                 <img v-if="heroCards[0].imageUrl" :src="heroCards[0].imageUrl" :alt="heroCards[0].goodsName" />
@@ -109,7 +117,7 @@
               v-if="heroCards[1]"
               class="hc hc--sm hc--a"
               :style="parallax(20)"
-              @click="goMarket"
+              @click="goGoods(heroCards[1].goodsId)"
             >
               <div class="hc__bob" style="animation-delay:.9s">
                 <img v-if="heroCards[1].imageUrl" :src="heroCards[1].imageUrl" :alt="heroCards[1].goodsName" />
@@ -122,7 +130,7 @@
               v-if="heroCards[2]"
               class="hc hc--sm hc--b"
               :style="parallax(30)"
-              @click="goMarket"
+              @click="goGoods(heroCards[2].goodsId)"
             >
               <div class="hc__bob" style="animation-delay:1.6s">
                 <img v-if="heroCards[2].imageUrl" :src="heroCards[2].imageUrl" :alt="heroCards[2].goodsName" />
@@ -181,7 +189,7 @@
             v-if="feature"
             class="feature"
             v-reveal
-            @click="goMarket"
+            @click="goGoods(feature.goodsId)"
           >
             <div class="feature__media">
               <img v-if="feature.imageUrl" :src="feature.imageUrl" :alt="feature.goodsName" loading="lazy" />
@@ -208,7 +216,7 @@
               :key="g.goodsId"
               class="mini"
               v-reveal="i * 90"
-              @click="goMarket"
+              @click="goGoods(g.goodsId)"
             >
               <div class="mini__media">
                 <img v-if="g.imageUrl" :src="g.imageUrl" :alt="g.goodsName" loading="lazy" />
@@ -226,7 +234,7 @@
             :key="'row'+g.goodsId"
             class="crow"
             v-reveal="i * 90"
-            @click="goMarket"
+            @click="goGoods(g.goodsId)"
           >
             <span class="crow__no serif">0{{ i + 1 }}</span>
             <div class="crow__thumb">
@@ -304,13 +312,13 @@
             class="sc"
             :class="`sc--${s.key}`"
             v-reveal="(i % 3) * 100"
-            @click="goMarket"
+            @click="goScene(s.key)"
           >
             <span class="sc__no serif">{{ String(i + 1).padStart(2, '0') }}</span>
             <el-icon class="sc__icon"><component :is="s.icon" /></el-icon>
             <span class="sc__name">{{ s.name }}</span>
             <span class="sc__desc">{{ s.desc }}</span>
-            <span class="sc__go">登录去逛逛<el-icon><ArrowRight /></el-icon></span>
+            <span class="sc__go">{{ isLogin ? '进入场景逛逛' : '登录后去逛逛' }}<el-icon><ArrowRight /></el-icon></span>
           </button>
         </div>
       </div>
@@ -425,7 +433,7 @@
     <!-- ============ Footer ============ -->
     <footer class="footer">
       <div class="wrap footer__inner">
-        <div class="footer__brand">
+        <div class="footer__brand" @click="goLanding">
           <div class="nav__logo nav__logo--sm"><el-icon><RefreshRight /></el-icon></div>
           <div>
             <div class="footer__name">校园二手交易平台</div>
@@ -491,24 +499,52 @@ const aiExamples = [
 ]
 
 const anchors = [
+  { id: 'top', label: '首页' },
   { id: 'showcase', label: '好物' },
-  { id: 'flow', label: '怎么交易' },
-  { id: 'scenes', label: '场景' },
-  { id: 'stats', label: '数据' },
+  { id: 'flow', label: '使用流程' },
+  { id: 'scenes', label: '校园场景' },
   { id: 'ai', label: 'AI 助手' }
 ]
 
-// ============ 导航意图 ============
+// ============ 导航意图（所有 CTA 都有真实去向，无死链） ============
 const goLogin = () => router.push('/login')
 const goRegister = () => router.push('/register')
+// 逛市场：已登录进入市场首页；未登录先进登录流程（直接 push /home 会被守卫弹回 /landing）
 const goMarket = () => router.push(isLogin ? '/home' : '/login')
 // AI 需要登录态：未登录先进登录流程，已登录进入正式 AI 页面
 const goAi = () => router.push(isLogin ? '/ai-assistant' : '/login')
+// 真实商品卡：已登录直达商品详情；未登录先登录
+const goGoods = (id) => router.push(isLogin ? `/goods/${id}` : '/login')
+// 场景卡：复用 GoodsList.applyRouteQuery 的 /goods?scene=<key>，不做第二套筛选
+const goScene = (key) => router.push(isLogin ? { path: '/goods', query: { scene: key } } : '/login')
+// Logo：回到 /landing（导航只存在于 Landing，本页时回顶，跨页时回落地页）
+const goLanding = () => {
+  if (router.currentRoute.value.path !== '/landing') {
+    router.push('/landing')
+  } else {
+    scrollTop()
+  }
+}
 
 const scrollTo = (id) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 const scrollTop = () => window.scrollTo({ top: 0, behavior: 'smooth' })
+
+// ============ 导航滚动高亮（scroll-spy：当前区块对应导航项显示下划线） ============
+const activeAnchor = ref('top')
+let spyObserver = null
+const initScrollSpy = () => {
+  spyObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) activeAnchor.value = e.target.id
+    })
+  }, { rootMargin: '-42% 0px -52% 0px', threshold: 0 })
+  anchors.forEach(a => {
+    const el = document.getElementById(a.id)
+    if (el) spyObserver.observe(el)
+  })
+}
 
 // ============ 数字滚动动画（进入数据区时触发一次） ============
 const anim = reactive({ onSaleCount: 0, totalTradeCount: 0, sellerCount: 0, totalFavoriteCount: 0 })
@@ -617,11 +653,13 @@ const loadShowcase = async () => {
 onMounted(() => {
   loadOverview()
   loadShowcase()
+  initScrollSpy()
 })
 
 onBeforeUnmount(() => {
   revealObserver?.disconnect()
   statsObserver?.disconnect()
+  spyObserver?.disconnect()
   if (rafId) cancelAnimationFrame(rafId)
 })
 </script>
@@ -702,43 +740,65 @@ onBeforeUnmount(() => {
 .lp-reveal { opacity: 0; transform: translateY(28px); transition: opacity .75s ease, transform .75s ease; }
 .lp-reveal.is-visible { opacity: 1; transform: none; }
 
-/* ============ 导航 ============ */
+/* ============ 导航（品牌官网级：更大字号 / 更宽间距 / 三级 CTA 层级 / 毛玻璃） ============ */
 .nav {
   position: sticky; top: 0; z-index: 60;
-  background: rgba(253, 250, 245, .82);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(236, 225, 214, .7);
+  background: rgba(253, 250, 245, .78);
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  border-bottom: 1px solid rgba(236, 225, 214, .65);
+  box-shadow: 0 4px 24px rgba(77, 67, 65, .05);
 }
 .nav__inner {
-  max-width: 1180px; margin: 0 auto; padding: 13px 32px;
-  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  max-width: 1200px; margin: 0 auto; padding: 16px 32px;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
 }
-.nav__brand { display: flex; align-items: center; gap: 11px; cursor: pointer; }
+.nav__brand { display: flex; align-items: center; gap: 13px; cursor: pointer; }
 .nav__logo {
-  width: 38px; height: 38px; border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   background: linear-gradient(135deg, #e2aab0, var(--blush-deep));
-  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 19px;
-  box-shadow: 0 6px 16px rgba(196,135,143,.3);
+  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px;
+  box-shadow: 0 8px 20px rgba(196,135,143,.32);
+  transition: transform .25s ease;
 }
-.nav__logo--sm { width: 34px; height: 34px; font-size: 17px; }
-.nav__word { line-height: 1.15; }
-.nav__name { display: block; font-size: 15.5px; font-weight: 800; letter-spacing: 1px; }
-.nav__en { display: block; font-size: 8.5px; font-weight: 700; letter-spacing: 2.2px; color: var(--ink-3); }
-.nav__links { display: flex; gap: 26px; }
+.nav__brand:hover .nav__logo { transform: rotate(-10deg) scale(1.05); }
+.nav__logo--sm { width: 36px; height: 36px; font-size: 18px; }
+.nav__word { line-height: 1.2; }
+.nav__name { display: block; font-size: 17.5px; font-weight: 800; letter-spacing: 1.2px; color: var(--ink); }
+.nav__en { display: block; font-size: 9px; font-weight: 700; letter-spacing: 2.4px; color: var(--ink-3); margin-top: 2px; }
+.nav__links { display: flex; gap: 6px; }
 .nav__links a {
-  font-size: 13.5px; color: var(--ink-2); cursor: pointer; font-weight: 500;
-  transition: color .2s ease; position: relative;
+  font-size: 15px; color: var(--ink-2); cursor: pointer; font-weight: 500;
+  padding: 8px 14px; border-radius: 999px;
+  transition: color .2s ease, background .2s ease;
+  position: relative; white-space: nowrap;
 }
 .nav__links a::after {
-  content: ''; position: absolute; left: 0; bottom: -5px; height: 2px; width: 0;
-  background: var(--blush-deep); border-radius: 2px; transition: width .25s ease;
+  content: ''; position: absolute; left: 50%; bottom: 2px; height: 2px; width: 0;
+  background: var(--blush-deep); border-radius: 2px;
+  transition: width .25s ease, left .25s ease;
 }
-.nav__links a:hover { color: var(--blush-deep); }
-.nav__links a:hover::after { width: 100%; }
-.nav__actions { display: flex; align-items: center; gap: 6px; }
+.nav__links a:hover { color: var(--blush-deep); background: rgba(243, 217, 221, .35); }
+.nav__links a:hover::after { width: 22px; left: calc(50% - 11px); }
+.nav__links a.active { color: var(--blush-deep); font-weight: 700; }
+.nav__links a.active::after { width: 22px; left: calc(50% - 11px); }
+.nav__actions { display: flex; align-items: center; gap: 12px; }
+/* 层级 1：文字按钮（登录）—— hover 有浅色胶囊底，存在感次于注册 */
+.nav__login {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 15px; font-weight: 600; color: var(--ink-2);
+  padding: 9px 16px; border-radius: 999px;
+  transition: color .2s ease, background .2s ease;
+}
+.nav__login:hover { color: var(--blush-deep); background: rgba(243, 217, 221, .42); }
+/* 层级 2：实心 pill（注册 / 进入市场）——视觉主行动 */
+.nav__cta { padding: 11px 22px !important; font-size: 14.5px !important; }
 
-/* ============ Hero ============ */
-.hero { position: relative; overflow: hidden; }
+/* ============ Hero（奶油象牙 + 裸粉 + 桃米，三层暖光斑） ============ */
+.hero {
+  position: relative; overflow: hidden;
+  background: linear-gradient(160deg, #fdfaf5 0%, #fdf3ee 52%, #fbf6e9 100%);
+}
 .hero__blob {
   position: absolute; border-radius: 50%; filter: blur(70px);
   pointer-events: none; transition: transform .35s ease-out;
@@ -747,6 +807,11 @@ onBeforeUnmount(() => {
   width: 480px; height: 480px; top: -160px; right: -80px;
   background: radial-gradient(circle, rgba(243,217,221,.9), rgba(243,217,221,0) 70%);
   animation: blobDrift 16s ease-in-out infinite;
+}
+.hero__blob--peach {
+  width: 360px; height: 360px; top: 32%; left: 42%;
+  background: radial-gradient(circle, rgba(244,220,203,.55), rgba(244,220,203,0) 72%);
+  animation: blobDrift 22s ease-in-out infinite;
 }
 .hero__blob--butter {
   width: 420px; height: 420px; bottom: -180px; left: -120px;
@@ -879,8 +944,11 @@ onBeforeUnmount(() => {
 .sec-head p { margin: 8px 0 0; font-size: 13.5px; color: var(--ink-2); }
 .sec-head__more { margin-left: auto; align-self: center; }
 
-/* ============ 02 编辑式精选 ============ */
-.editorial { padding: 88px 0 92px; }
+/* ============ 02 编辑式精选（象牙白 + 浅杏 + 柔粉，卡片底带极浅暖杏，与 Hero 拉开层次） ============ */
+.editorial {
+  padding: 88px 0 92px;
+  background: linear-gradient(180deg, #fffdf8 0%, #fdf8f0 100%);
+}
 .edit-grid {
   display: grid;
   grid-template-columns: 1.55fr 1fr;
@@ -981,6 +1049,9 @@ onBeforeUnmount(() => {
   width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
   color: var(--blush-deep); background: var(--blush);
 }
+/* 清单行交替使用奶杏 / 奶油黄占位底，增加同色系层次 */
+.crow:nth-of-type(2) .crow__fallback { background: var(--apricot); color: #a68a5b; }
+.crow:nth-of-type(3) .crow__fallback { background: var(--butter); color: var(--gold); }
 .crow__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .crow__name {
   font-size: 14.5px; font-weight: 600; color: var(--ink);
@@ -1011,8 +1082,11 @@ onBeforeUnmount(() => {
 .edit-empty h3 { margin: 16px 0 8px; font-size: 20px; }
 .edit-empty p { margin: 0 0 22px; color: var(--ink-2); font-size: 14px; }
 
-/* ============ 03 流转故事 ============ */
-.flow { padding: 92px 0; background: linear-gradient(180deg, #fdfaf5, #fbf3ee); }
+/* ============ 03 流转故事（淡黄 + 奶杏，与前后区块的粉/象牙拉开） ============ */
+.flow {
+  padding: 92px 0;
+  background: linear-gradient(180deg, #fbf5e2 0%, #f7ecd6 100%);
+}
 .flow__line {
   position: relative;
   max-width: 900px; margin: -10px auto 8px; height: 2px;
@@ -1024,9 +1098,11 @@ onBeforeUnmount(() => {
 }
 .step {
   position: relative; text-align: center;
-  background: rgba(255,255,255,.85); border-radius: 20px;
+  background: linear-gradient(180deg, #fffdf8, #fdf6ea);
+  border-radius: 20px;
   padding: 30px 20px 28px;
   border: 1px solid rgba(236,225,214,.8);
+  box-shadow: 0 10px 28px rgba(156,122,52,.07);
   transition: transform .3s ease, box-shadow .3s ease;
 }
 .step:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(77,67,65,.1); }
@@ -1038,8 +1114,11 @@ onBeforeUnmount(() => {
 .step h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
 .step p { margin: 0; font-size: 12.5px; line-height: 1.8; color: var(--ink-2); }
 
-/* ============ 04 场景 ============ */
-.scenes { padding: 92px 0; }
+/* ============ 04 场景（象牙底，每张卡一种低饱和品牌色：裸粉/奶油黄/灰蓝/桃米/沙金/奶杏） ============ */
+.scenes {
+  padding: 92px 0;
+  background: linear-gradient(180deg, #fdf8f0 0%, #fdfaf5 100%);
+}
 .scenes__grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
 }
@@ -1061,22 +1140,36 @@ onBeforeUnmount(() => {
 .sc:hover { transform: translateY(-6px); box-shadow: 0 20px 44px rgba(77,67,65,.13); }
 .sc:hover::before { transform: scale(1.04); }
 .sc--dorm::before { background: linear-gradient(135deg, #fbe6e9, #f6d2d8); }
-.sc--study::before { background: linear-gradient(135deg, #f8eccd, #f3dfa6); }
-.sc--digital::before { background: linear-gradient(135deg, #fdf3d8, #f6e3ac); }
-.sc--life::before { background: linear-gradient(135deg, #fae3d2, #f4cfb4); }
-.sc--bike::before { background: linear-gradient(135deg, #e3eaee, #d2dde4); }
-.sc--sport::before { background: linear-gradient(135deg, #f7ecd3, #efdcb8); }
+.sc--study::before { background: linear-gradient(135deg, #f9ecca, #f2dda1); }
+.sc--digital::before { background: linear-gradient(135deg, #e8eef2, #d0dde6); }
+.sc--life::before { background: linear-gradient(135deg, #fae3d2, #f3ccaf); }
+.sc--bike::before { background: linear-gradient(135deg, #f1e8d8, #e4d3b8); }
+.sc--sport::before { background: linear-gradient(135deg, #f9e2cd, #f0c8a4); }
 .sc__no { position: absolute; top: 20px; right: 24px; font-size: 13px; color: rgba(77,67,65,.35); letter-spacing: 1px; }
-.sc__icon { font-size: 30px; color: var(--ink); margin-bottom: auto; }
+.sc__icon { font-size: 30px; color: var(--ink); margin-bottom: auto; transition: transform .3s ease; }
+.sc:hover .sc__icon { transform: scale(1.12) rotate(-4deg); }
+/* 图标使用各场景同色系深色，强化色块记忆点 */
+.sc--dorm .sc__icon { color: #b56f7a; }
+.sc--study .sc__icon { color: #9c7d2e; }
+.sc--digital .sc__icon { color: #6d8291; }
+.sc--life .sc__icon { color: #b57f5c; }
+.sc--bike .sc__icon { color: #96815c; }
+.sc--sport .sc__icon { color: #bd7e52; }
 .sc__name { font-size: 19px; font-weight: 800; margin-top: 26px; }
 .sc__desc { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; line-height: 1.6; }
 .sc__go {
   display: inline-flex; align-items: center; gap: 5px;
-  margin-top: 14px; font-size: 12.5px; font-weight: 600; color: var(--blush-deep);
+  margin-top: 14px; font-size: 12.5px; font-weight: 600;
   opacity: 0; transform: translateY(6px); transition: opacity .3s ease, transform .3s ease;
 }
 .sc__go .el-icon { font-size: 13px; }
 .sc:hover .sc__go { opacity: 1; transform: translateY(0); }
+.sc--dorm .sc__go { color: #b56f7a; }
+.sc--study .sc__go { color: #9c7d2e; }
+.sc--digital .sc__go { color: #6d8291; }
+.sc--life .sc__go { color: #b57f5c; }
+.sc--bike .sc__go { color: #96815c; }
+.sc--sport .sc__go { color: #bd7e52; }
 
 /* ============ 05 数据 ============ */
 .stats { position: relative; overflow: hidden; background: linear-gradient(135deg, #f6ead2, #f3ddc4); }
@@ -1100,41 +1193,45 @@ onBeforeUnmount(() => {
 .num span { font-size: 13px; color: #8a7460; }
 .num--days strong { color: var(--blush-deep); }
 
-/* ============ 06 AI ============ */
-.ai { padding: 96px 0; }
+/* ============ 06 AI（唯一冷色区：柔和灰蓝雾感，暗示"智能/科技"，不做蓝紫 SaaS） ============ */
+.ai {
+  padding: 96px 0;
+  background: linear-gradient(180deg, #f4f8fa 0%, #ebf1f4 100%);
+}
+.ai .eyebrow { color: var(--blue); }
 .ai__inner {
   display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center;
 }
 .ai__copy h2 { margin: 14px 0 16px; font-size: 32px; font-weight: 800; line-height: 1.4; }
-.ai__copy > p { margin: 0 0 26px; font-size: 14.5px; line-height: 2; color: var(--ink-2); max-width: 470px; }
+.ai__copy > p { margin: 0 0 26px; font-size: 14.5px; line-height: 2; color: #6f7d86; max-width: 470px; }
 .ai__qs { display: flex; flex-direction: column; gap: 10px; max-width: 460px; }
 .ai__q {
   display: flex; align-items: center; gap: 11px;
-  border: 1px solid var(--line); background: var(--card);
+  border: 1px solid #d9e2e7; background: #fffefb;
   border-radius: 14px; padding: 14px 18px; cursor: pointer; text-align: left;
   font-size: 14px; color: var(--ink);
   transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
 }
-.ai__q > .el-icon:first-child { color: var(--blush-deep); font-size: 18px; flex-shrink: 0; }
+.ai__q > .el-icon:first-child { color: var(--blue); font-size: 18px; flex-shrink: 0; }
 .ai__q span { flex: 1; }
-.ai__q-arrow { color: var(--ink-3); transition: transform .25s ease, color .25s ease; }
-.ai__q:hover { transform: translateX(6px); border-color: var(--blush); box-shadow: 0 10px 26px rgba(196,135,143,.12); }
-.ai__q:hover .ai__q-arrow { transform: translateX(4px); color: var(--blush-deep); }
-.ai__hint { margin-top: 22px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-3); }
+.ai__q-arrow { color: #a8b6bf; transition: transform .25s ease, color .25s ease; }
+.ai__q:hover { transform: translateX(6px); border-color: #b9cad4; box-shadow: 0 10px 26px rgba(109,130,145,.16); }
+.ai__q:hover .ai__q-arrow { transform: translateX(4px); color: var(--blue); }
+.ai__hint { margin-top: 22px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #8fa0aa; }
 .ai__soon {
-  background: var(--blush); color: var(--blush-deep);
+  background: #dce8ee; color: #5f7684;
   border-radius: 999px; padding: 3px 12px; font-size: 11.5px; font-weight: 700;
 }
 .ai__mock {
   border-radius: 24px; overflow: hidden;
   background: var(--card);
-  box-shadow: 0 24px 60px rgba(77,67,65,.14);
-  border: 1px solid var(--line);
+  box-shadow: 0 24px 60px rgba(85,105,120,.18);
+  border: 1px solid #dde6eb;
 }
 .ai__mock-bar {
   display: flex; align-items: center; gap: 7px;
-  padding: 14px 18px; border-bottom: 1px solid var(--line);
-  background: #fdf6ef;
+  padding: 14px 18px; border-bottom: 1px solid #e4ebef;
+  background: #f2f6f8;
 }
 .ai__mock-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--blush); }
 .ai__mock-bar i:nth-child(2) { background: var(--butter); }
@@ -1149,7 +1246,7 @@ onBeforeUnmount(() => {
 }
 .bubble--ai {
   align-self: flex-start;
-  background: #fbf3ec; color: var(--ink);
+  background: #eef3f6; color: var(--ink);
   border-bottom-left-radius: 5px;
 }
 .bubble__lines { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
@@ -1165,24 +1262,27 @@ onBeforeUnmount(() => {
 }
 .ai__mock-note { align-self: center; font-size: 11px; color: var(--ink-3); }
 
-/* ============ 07 最终 CTA ============ */
+/* ============ 07 最终 CTA（暖粉主洗 + 奶油黄侧光，整页暖色收尾） ============ */
 .final { position: relative; overflow: hidden; padding: 96px 0 100px; }
 .final__wash {
   position: absolute; inset: 0;
-  background: radial-gradient(ellipse at 50% 0%, #fbe6e9 0%, transparent 60%);
+  background:
+    radial-gradient(ellipse 60% 90% at 18% 0%, #f8d9df 0%, transparent 62%),
+    radial-gradient(ellipse 55% 85% at 85% 20%, #f6e7b4 0%, transparent 60%),
+    linear-gradient(180deg, #fdfaf5, #fbf1ee);
 }
 .final__inner { position: relative; text-align: center; }
 .final__inner h2 { margin: 0 0 14px; font-size: 36px; font-weight: 800; letter-spacing: 1px; }
 .final__inner p { margin: 0 0 32px; font-size: 15px; color: var(--ink-2); }
 .final__cta { display: flex; justify-content: center; align-items: center; gap: 14px; flex-wrap: wrap; }
 
-/* ============ Footer ============ */
-.footer { border-top: 1px solid var(--line); background: #fbf4ec; }
+/* ============ Footer（暖象牙底，与 AI 冷色区形成收尾对比） ============ */
+.footer { border-top: 1px solid var(--line); background: linear-gradient(180deg, #fbf1ee, #f7ece2); }
 .footer__inner {
   padding: 34px 32px;
   display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;
 }
-.footer__brand { display: flex; align-items: center; gap: 12px; }
+.footer__brand { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .footer__name { font-size: 14.5px; font-weight: 800; }
 .footer__sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
 .footer__links { display: flex; gap: 22px; }
