@@ -646,10 +646,16 @@ const submitMessage = async () => {
 
 
 // =========================
-// 返回：有浏览历史就后退，否则回商品中心
+// 返回：来源是商品列表时，回到"原筛选 / 分页 / 视图 / 滚动位置"；
+// 其它来源（首页最近浏览、推荐位等）维持浏览器后退
 // =========================
 
 const goBack = () => {
+  if (route.query.from === 'list') {
+    router.push({ path: '/goods', query: { restore: '1' } })
+    return
+  }
+
   if (window.history.length > 1) {
     router.back()
   } else {

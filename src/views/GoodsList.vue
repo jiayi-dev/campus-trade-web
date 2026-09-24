@@ -492,8 +492,8 @@
 
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Grid, Menu, Search, RefreshLeft, Plus, DocumentAdd,
@@ -770,6 +770,101 @@ const clearScene = () => {
   activeScene.value = null
   router.replace({ path: '/goods', query: {} })
   // watch 感知 query 变化后会统一 applyRouteQuery + loadGoods
+}
+
+// =========================
+// 列表状态快照：商品列表 → 商品详情 → 返回 时恢复筛选条件 / 分页 / 视图 / 滚动位置
+// 不引入 Pinia：sessionStorage 承载快照，history.state 标记浏览器后退返回
+// =========================
+
+const SNAPSHOT_KEY = 'campus_goods_list_snapshot'
+const HISTORY_MARK = '__goodsListRestore'
+
+// Layout 的内容区是真正的滚动容器（.content { overflow-y: auto }），window 不滚动
+const getScrollContainer = () => document.querySelector('.content')
+
+const buildSnapshot = () => ({
+  goodsName: goodsName.value,
+  categoryId: categoryId.value,
+  minPrice: minPrice.value,
+  maxPrice: maxPrice.value,
+  conditionLevel: conditionLevel.value,
+  campus: campus.value,
+  sortBy: sortBy.value,
+  pageNum: pageNum.value,
+  pageSize: pageSize.value,
+  viewMode: viewMode.value,
+  sceneKey: activeScene.value?.key || null,
+  scrollTop: getScrollContainer()?.scrollTop || 0,
+  savedAt: Date.now()
+})
+
+const persistSnapshot = () => {
+  const snapshot = buildSnapshot()
+  sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot))
+  // 在当前列表历史条目标记 restore：浏览器后退回到本条目时仍可识别
+  const state = window.history.state || {}
+  if (!state[HISTORY_MARK]) {
+    window.history.replaceState({ ...state, [HISTORY_MARK]: true }, '')
+  }
+}
+
+const readSnapshot = () => {
+  try {
+    const raw = sessionStorage.getItem(SNAPSHOT_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch (e) {
+    return null
+  }
+}
+
+// 离开商品列表进入商品详情时：保存快照，并给详情路由打上 from=list 标记，
+// 让详情页"返回商品列表"按钮知道要回到"原浏览位置"而不是全新列表
+onBeforeRouteLeave((to) => {
+  if (/^\/goods\/\d+/.test(to.path)) {
+    persistSnapshot()
+    if (!to.query.from) {
+      return { path: to.path, query: { ...to.query, from: 'list' } }
+    }
+  }
+  return true
+})
+
+const applySnapshot = (snap) => {
+  goodsName.value = snap.goodsName || ''
+  categoryId.value = snap.categoryId ?? null
+  minPrice.value = snap.minPrice ?? null
+  maxPrice.value = snap.maxPrice ?? null
+  conditionLevel.value = snap.conditionLevel ?? null
+  campus.value = snap.campus || null
+  sortBy.value = VALID_SORTS.includes(snap.sortBy) ? snap.sortBy : 'latest'
+  pageNum.value = snap.pageNum || 1
+  pageSize.value = snap.pageSize || 12
+  viewMode.value = snap.viewMode === 'table' ? 'table' : 'card'
+  activeScene.value = findScene(snap.sceneKey)
+}
+
+// 数据渲染完成后再恢复滚动：商品卡片封面为固定高度，nextTick 后布局已稳定；
+// 再用 rAF + 延时两次兜底，吸收图片解码等微小位移
+const restoreScroll = (top) => {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const el = getScrollContainer()
+      if (el) el.scrollTop = top
+      setTimeout(() => {
+        const el2 = getScrollContainer()
+        if (el2) el2.scrollTop = top
+      }, 180)
+    })
+  })
+}
+
+const consumeHistoryMark = () => {
+  const state = window.history.state
+  if (state && state[HISTORY_MARK]) {
+    const { [HISTORY_MARK]: unused, ...rest } = state
+    window.history.replaceState(rest, '')
+  }
 }
 
 const handleSearch = () => {
@@ -1149,8 +1244,26 @@ const handleDelete = async (goodsId) => {
 // 页面加载
 // =========================
 
-onMounted(() => {
-  // 先还原首页/场景卡片带来的路由筛选状态，再加载
+onMounted(async () => {
+  // 返回路径 1：详情页"返回商品列表"按钮 → /goods?restore=1
+  // 返回路径 2：浏览器后退 → 列表历史条目上的 history.state 标记
+  const byButton = route.query.restore === '1'
+  const byHistory = !!(window.history.state && window.history.state[HISTORY_MARK])
+
+  if (byButton || byHistory) {
+    const snap = readSnapshot()
+    if (snap) {
+      consumeHistoryMark()
+      applySnapshot(snap)
+      // 分类字典仍需加载（快捷入口/分类名映射依赖），与商品请求并行
+      loadCategories()
+      await loadGoods()
+      restoreScroll(snap.scrollTop || 0)
+      return
+    }
+  }
+
+  // 正常进入：先还原首页/场景卡片带来的路由筛选状态，再加载
   applyRouteQuery()
   loadCategories()
   loadGoods()
