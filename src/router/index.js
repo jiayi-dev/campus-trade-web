@@ -18,6 +18,13 @@ const router = createRouter({
     },
 
     {
+      // 登录前产品首页：未登录用户进入平台的第一站
+      path: '/landing',
+      component: () => import('../views/Landing.vue'),
+      meta: { title: '校园二手交易平台', public: true }
+    },
+
+    {
       path: '/',
       component: () => import('../views/Layout.vue'),
       redirect: '/home',
@@ -61,6 +68,15 @@ const router = createRouter({
 
         },
         {
+          // AI 校园闲置助手：独立业务页面（Agent 能力规划中，页面架构先行）
+          path: 'ai-assistant',
+          component: () => import('../views/AiAssistant.vue'),
+          meta: {
+            title: 'AI 校园闲置助手',
+            roles: ['student', 'seller', 'admin']
+          }
+        },
+        {
           path: 'seller-apply',
           component: () => import('../views/SellerApply.vue'),
           meta: {
@@ -99,9 +115,9 @@ router.beforeEach((to) => {
     return true
   }
 
-  // 没登录 → 登录页
+  // 没登录 → 登录前产品首页（/landing），而不是直接弹到登录页
   if (!token) {
-    return '/login'
+    return '/landing'
   }
 
   // 有角色限制，但当前角色不在允许范围

@@ -134,6 +134,7 @@
           <el-option label="价格从低到高" value="price_asc" />
           <el-option label="价格从高到低" value="price_desc" />
           <el-option label="热度优先" value="hot" />
+          <el-option label="本周宝藏" value="treasure" />
         </el-select>
 
         <el-button type="primary" @click="handleSearch">
@@ -146,6 +147,23 @@
 
       </div>
     </el-card>
+
+    <!-- 3.5 场景筛选状态条：从首页场景导航进入时展示
+         场景 = 带语义的关键词筛选状态，不是独立页面 -->
+    <div v-if="activeScene" class="scene-banner">
+      <div class="scene-banner__info">
+        <el-icon class="scene-banner__icon"><Compass /></el-icon>
+        <div>
+          <div class="scene-banner__name">{{ activeScene.name }}</div>
+          <div class="scene-banner__desc">
+            {{ activeScene.desc }} · 按「{{ activeScene.keyword }}」筛选，共 {{ total }} 件
+          </div>
+        </div>
+      </div>
+      <el-button size="small" round @click="clearScene">
+        <el-icon><Close /></el-icon>清除场景
+      </el-button>
+    </div>
 
     <!-- 4. 结果信息条 -->
     <div class="result-bar">
@@ -474,18 +492,20 @@
 
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Grid, Menu, Search, RefreshLeft, Plus, DocumentAdd,
-  Goods, Box
+  Goods, Box, Compass, Close
 } from '@element-plus/icons-vue'
 import GoodsCard from '../components/GoodsCard.vue'
 import { formatPrice, formatDateTime } from '../utils/format'
+import { findScene } from '../utils/scenes'
 import request from '../utils/request'
 
 const router = useRouter()
+const route = useRoute()
 
 // 当前登录用户：编辑/删除按钮只对自己的商品展示（真正的权限由后端兜底）
 const currentUserId = Number(localStorage.getItem('userId'))
@@ -511,6 +531,10 @@ const maxPrice = ref(null)
 const conditionLevel = ref(null)
 const campus = ref(null)
 const sortBy = ref('latest')
+
+// 场景筛选状态：来自首页场景导航 /goods?scene=<key>
+// 场景不是独立页面，本质是"带语义的关键词筛选状态"（utils/scenes.js 统一定义）
+const activeScene = ref(null)
 
 const categories = ref([])
 const goodsList = ref([])
@@ -715,12 +739,52 @@ const handleToggleFavorite = async (goodsId) => {
 // 搜索 / 重置
 // =========================
 
+// =========================
+// 路由 query → 筛选状态还原
+// 首页/场景卡片带来的 goodsName / categoryId / campus / sortBy / scene 全部生效
+// =========================
+
+const VALID_SORTS = ['latest', 'price_asc', 'price_desc', 'hot', 'treasure']
+
+const applyRouteQuery = () => {
+  const q = route.query
+  const scene = findScene(q.scene)
+  activeScene.value = scene
+  // 场景本质是关键词筛选：场景关键词优先于普通搜索词
+  goodsName.value = scene ? scene.keyword : (q.goodsName || '')
+  categoryId.value = q.categoryId ? Number(q.categoryId) : null
+  campus.value = q.campus || null
+  sortBy.value = VALID_SORTS.includes(q.sortBy) ? q.sortBy : 'latest'
+  pageNum.value = 1
+}
+
+// 已在商品中心时再次从首页跳入（如换场景）：query 变化即重新还原并加载
+watch(() => route.query, () => {
+  if (route.path !== '/goods') return
+  applyRouteQuery()
+  loadGoods()
+})
+
+// 清除场景状态：退出场景关键词与 query，回到普通商品市场
+const clearScene = () => {
+  activeScene.value = null
+  router.replace({ path: '/goods', query: {} })
+  // watch 感知 query 变化后会统一 applyRouteQuery + loadGoods
+}
+
 const handleSearch = () => {
   // 价格区间合法性
   if (minPrice.value !== null && maxPrice.value !== null
       && minPrice.value > maxPrice.value) {
     ElMessage.warning('最低价不能高于最高价')
     return
+  }
+
+  // 用户手动修改了搜索词：视为退出场景筛选状态
+  if (activeScene.value && goodsName.value !== activeScene.value.keyword) {
+    activeScene.value = null
+    const { scene, ...rest } = route.query
+    router.replace({ path: '/goods', query: rest })
   }
 
   pageNum.value = 1
@@ -736,6 +800,12 @@ const handleReset = () => {
   campus.value = null
   sortBy.value = 'latest'
   pageNum.value = 1
+  // 重置同时退出场景筛选状态
+  if (activeScene.value) {
+    activeScene.value = null
+    router.replace({ path: '/goods', query: {} })
+    return // watch 会统一触发重新加载
+  }
   loadGoods()
 }
 
@@ -1080,6 +1150,8 @@ const handleDelete = async (goodsId) => {
 // =========================
 
 onMounted(() => {
+  // 先还原首页/场景卡片带来的路由筛选状态，再加载
+  applyRouteQuery()
   loadCategories()
   loadGoods()
 })
@@ -1217,6 +1289,44 @@ onMounted(() => {
 
 .filter-bar__sort {
   width: 140px;
+}
+
+/* 场景筛选状态条：奶油粉渐变，明确"当前处于场景浏览模式" */
+.scene-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f7e1e3 0%, #f3e6d4 100%);
+  border: 1px solid #f0d9dc;
+}
+
+.scene-banner__info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.scene-banner__icon {
+  font-size: 26px;
+  color: #c8969b;
+  flex-shrink: 0;
+}
+
+.scene-banner__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+.scene-banner__desc {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--brand-text-regular);
 }
 
 /* 结果信息条 */

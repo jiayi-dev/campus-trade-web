@@ -58,15 +58,18 @@
               :style="floatStyle(i)"
               @click="goGoods(g.goodsId)"
             >
-              <img
-                v-if="g.imageUrl"
-                :src="g.imageUrl"
-                :alt="g.goodsName"
-                loading="lazy"
-                @load="e => e.target.classList.add('is-loaded')"
-              />
-              <div v-else class="float-card__fallback"><el-icon><Picture /></el-icon></div>
-              <span class="float-card__price">{{ formatPrice(g.price) }}</span>
+              <!-- 内层负责上下浮动 bob，外层 transform 留给鼠标视差，两者不冲突 -->
+              <div class="float-card__inner" :style="{ animationDelay: `${i * 0.7}s` }">
+                <img
+                  v-if="g.imageUrl"
+                  :src="g.imageUrl"
+                  :alt="g.goodsName"
+                  loading="lazy"
+                  @load="e => e.target.classList.add('is-loaded')"
+                />
+                <div v-else class="float-card__fallback"><el-icon><Picture /></el-icon></div>
+                <span class="float-card__price">{{ formatPrice(g.price) }}</span>
+              </div>
             </div>
           </template>
           <div v-else class="hero__float-skeleton">
@@ -79,7 +82,7 @@
     <!-- ============================================================
          第二视觉层 · 大家最近都在看（热门） 1 大 + 4 小
          ============================================================ -->
-    <section class="block block--reveal" data-stagger>
+    <section class="block" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">大家最近都在看</h2>
@@ -133,7 +136,7 @@
     <!-- ============================================================
          第二视觉层 · 校园场景导航 6 卡
          ============================================================ -->
-    <section class="block block--reveal block--cream" data-stagger>
+    <section class="block block--cream" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">按场景找好物</h2>
@@ -145,7 +148,7 @@
           v-for="s in scenes"
           :key="s.key"
           class="scene-card"
-          @click="goSearch(s.keyword)"
+          @click="goScene(s.key)"
         >
           <div class="scene-card__icon" :style="{ background: s.bg }">
             <el-icon><component :is="s.icon" /></el-icon>
@@ -159,7 +162,7 @@
     <!-- ============================================================
          第二视觉层 · 本周宝藏（treasure 排序，4 大卡）
          ============================================================ -->
-    <section class="block block--reveal block--apricot" data-stagger>
+    <section class="block block--apricot" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">本周宝藏</h2>
@@ -193,7 +196,7 @@
     <!-- ============================================================
          第三视觉层 · 最新发布（8 卡，刚刚发布标签）
          ============================================================ -->
-    <section class="block block--reveal block--pink-soft" data-stagger>
+    <section class="block block--pink-soft" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">最新发布</h2>
@@ -222,8 +225,10 @@
 
     <!-- ============================================================
          第三视觉层 · 动态校园专区（按真实校区数据渲染）
+         三种状态：概览加载中 → 骨架屏；无校区数据 → 空态引导（不伪造校区）；
+         有校区 → 多校区 Tab 懒加载 / 单校区直接展示
          ============================================================ -->
-    <section v-if="campuses.length" class="block block--reveal" data-stagger>
+    <section class="block" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">校园专区</h2>
@@ -231,45 +236,70 @@
         </div>
       </div>
 
-      <div v-if="campuses.length > 1" class="campus-tabs">
-        <button
-          v-for="c in campuses"
-          :key="c"
-          class="campus-tab"
-          :class="{ 'is-active': activeCampus === c }"
-          @click="activeCampus = c"
-        >{{ c }}</button>
-      </div>
-
-      <div v-if="loading.campus" class="goods-grid">
+      <!-- 状态一：平台概览加载中 -->
+      <div v-if="loading.overview" class="goods-grid">
         <div v-for="i in 4" :key="i" class="skel skel--card"></div>
       </div>
-      <div v-else-if="activeCampusGoods.length" class="goods-grid">
-        <GoodsCard
-          v-for="g in activeCampusGoods"
-          :key="g.goodsId"
-          :goods="g"
-          :category-name="categoryName(g.categoryId)"
-          :editable="false"
-          :favorite="favoriteIds.has(g.goodsId)"
-          :fav-loading="favLoadingIds.has(g.goodsId)"
-          @toggle-favorite="handleToggleFavorite"
-        />
+
+      <!-- 状态二：数据库暂无带校区的在售商品 → 真实空状态 + 引导，不伪造校区 -->
+      <div v-else-if="!campuses.length" class="campus-empty">
+        <el-icon class="campus-empty__icon"><School /></el-icon>
+        <div class="campus-empty__title">校园专区正在形成中</div>
+        <div class="campus-empty__desc">
+          卖家发布商品时填写校区后，这里会自动出现对应校区的好物
+        </div>
+        <button class="btn-outline btn-sm" @click="goGoodsList">先逛逛全部商品</button>
       </div>
-      <el-empty v-else :description="`「${activeCampus}」暂无在售好物`" :image-size="90" />
+
+      <!-- 状态三：有真实校区数据 -->
+      <template v-else>
+        <!-- 多校区才有 Tab；单校区直接展示，不做无意义 Tab -->
+        <div v-if="campuses.length > 1" class="campus-tabs">
+          <button
+            v-for="c in campuses"
+            :key="c"
+            class="campus-tab"
+            :class="{ 'is-active': activeCampus === c }"
+            @click="switchCampus(c)"
+          >{{ c }}</button>
+        </div>
+
+        <div v-if="loading.campus" class="goods-grid">
+          <div v-for="i in 4" :key="i" class="skel skel--card"></div>
+        </div>
+        <div v-else-if="activeCampusGoods.length" class="goods-grid">
+          <GoodsCard
+            v-for="g in activeCampusGoods"
+            :key="g.goodsId"
+            :goods="g"
+            :category-name="categoryName(g.categoryId)"
+            :editable="false"
+            :favorite="favoriteIds.has(g.goodsId)"
+            :fav-loading="favLoadingIds.has(g.goodsId)"
+            @toggle-favorite="handleToggleFavorite"
+          />
+        </div>
+        <el-empty v-else :description="`「${activeCampus}」暂无在售好物`" :image-size="90">
+          <button class="btn-outline btn-sm" @click="goGoodsList">去看看全部商品</button>
+        </el-empty>
+      </template>
     </section>
 
     <!-- ============================================================
          第三视觉层 · 热门分类九宫格
          ============================================================ -->
-    <section v-if="categories.length" class="block block--reveal block--milky" data-stagger>
+    <section class="block block--milky" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">热门分类</h2>
           <p class="block__sub">按品类快速定位</p>
         </div>
       </div>
-      <div class="cat-grid">
+
+      <div v-if="loading.category" class="cat-grid">
+        <div v-for="i in 8" :key="i" class="skel skel--cat"></div>
+      </div>
+      <div v-else-if="categories.length" class="cat-grid">
         <button
           v-for="c in categories"
           :key="c.categoryId"
@@ -280,12 +310,18 @@
           <div class="cat-card__name">{{ c.categoryName }}</div>
         </button>
       </div>
+      <div v-else class="campus-empty">
+        <el-icon class="campus-empty__icon"><Files /></el-icon>
+        <div class="campus-empty__title">分类暂时不可用</div>
+        <div class="campus-empty__desc">分类数据加载失败，可直接搜索或浏览全部商品</div>
+        <button class="btn-outline btn-sm" @click="goGoodsList">浏览全部商品</button>
+      </div>
     </section>
 
     <!-- ============================================================
          第三视觉层 · 闲置流转故事条（不含金额口径）
          ============================================================ -->
-    <section class="story-bar block--reveal" data-stagger>
+    <section class="story-bar" v-reveal>
       <div class="story-bar__inner">
         <el-icon class="story-bar__icon"><MagicStick /></el-icon>
         <div class="story-bar__text">
@@ -298,7 +334,7 @@
     <!-- ============================================================
          第四视觉层 · 平台实时数据 4 卡（数字递增）
          ============================================================ -->
-    <section class="block block--reveal" data-stagger>
+    <section class="block" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">平台数据</h2>
@@ -328,14 +364,15 @@
     <!-- ============================================================
          第四视觉层 · 我的最近浏览（localStorage，登录后可见）
          ============================================================ -->
-    <section v-if="isLogin && recentViews.length" class="block block--reveal" data-stagger>
+    <section v-if="isLogin" class="block" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">最近浏览</h2>
           <p class="block__sub">接着上次逛过的往下看</p>
         </div>
       </div>
-      <div class="recent-rail">
+
+      <div v-if="recentViews.length" class="recent-rail">
         <div
           v-for="r in recentViews"
           :key="r.goodsId"
@@ -351,12 +388,19 @@
           <div class="recent-card__time">{{ formatRelativeTime(r.time) }}</div>
         </div>
       </div>
+
+      <!-- 无浏览记录：轻量空状态 + 真实跳转，不留视觉空洞 -->
+      <div v-else class="recent-empty">
+        <el-icon class="recent-empty__icon"><View /></el-icon>
+        <span class="recent-empty__text">还没有浏览记录，去逛逛热门好物</span>
+        <button class="link-more" @click="goSort('hot')">去看看 ›</button>
+      </div>
     </section>
 
     <!-- ============================================================
          第四视觉层 · 平台小贴士
          ============================================================ -->
-    <section class="block block--reveal block--milky" data-stagger>
+    <section class="block block--milky" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">安全交易小贴士</h2>
@@ -374,7 +418,7 @@
     <!-- ============================================================
          第五视觉层 · AI 校园闲置助手入口
          ============================================================ -->
-    <section class="ai-entry block--reveal" data-stagger @click="$router.push('/ai-assistant')">
+    <section class="ai-entry" v-reveal @click="$router.push('/ai-assistant')">
       <div class="ai-entry__left">
         <div class="ai-entry__badge">AI 校园闲置助手</div>
         <h2 class="ai-entry__title">不知道买什么？直接告诉我你想找什么。</h2>
@@ -412,13 +456,14 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'v
 import { useRouter } from 'vue-router'
 import {
   Search, Plus, Promotion, Picture, View, Star, Location,
-  Files, MagicStick, ChatLineSquare,
+  Files, MagicStick, ChatLineSquare, School,
   House, Reading, Cellphone, Coffee, Bicycle, Basketball
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import request from '../utils/request'
 import GoodsCard from '../components/GoodsCard.vue'
 import { formatPrice, formatRelativeTime } from '../utils/format'
+import { SCENES } from '../utils/scenes'
 
 const router = useRouter()
 
@@ -439,21 +484,25 @@ const favoriteIds = ref(new Set())
 const favLoadingIds = ref(new Set())
 const recentViews = ref([])
 
-const loading = reactive({ hot: true, treasure: true, latest: true, campus: true })
+const loading = reactive({ overview: true, hot: true, treasure: true, latest: true, campus: false, category: true })
 
 const keyword = ref('')
 
 // 快捷搜索词
 const quickChips = ['显示器', '九成新教材', '宿舍书桌', '自行车']
-// 场景导航：点击按关键词进入商品中心搜索
-const scenes = [
-  { key: 'dorm', name: '宿舍好物', desc: '床桌椅灯收纳', keyword: '宿舍', icon: House, bg: 'linear-gradient(135deg,#f7e1e3,#f4d5d8)' },
-  { key: 'study', name: '学习装备', desc: '教材文具考研', keyword: '教材', icon: Reading, bg: 'linear-gradient(135deg,#f3e6d4,#ead9a0)' },
-  { key: 'digital', name: '数码电子', desc: '键鼠显示器', keyword: '显示器', icon: Cellphone, bg: 'linear-gradient(135deg,#f5e7a8,#ead9a0)' },
-  { key: 'life', name: '生活用品', desc: '小家电日用品', keyword: '生活', icon: Coffee, bg: 'linear-gradient(135deg,#f4d5d8,#f7e1e3)' },
-  { key: 'bike', name: '出行代步', desc: '自行车滑板车', keyword: '自行车', icon: Bicycle, bg: 'linear-gradient(135deg,#dde3e8,#ece3dc)' },
-  { key: 'sport', name: '运动休闲', desc: '球拍健身器材', keyword: '运动', icon: Basketball, bg: 'linear-gradient(135deg,#f3e6d4,#f5ead0)' }
-]
+
+// 场景导航：定义与商品中心共享（utils/scenes.js），这里只补充首页卡片需要的图标与配色
+// 点击进入 /goods?scene=<key>，由商品中心还原成"带语义的场景筛选状态"
+const sceneIcons = { dorm: House, study: Reading, digital: Cellphone, life: Coffee, bike: Bicycle, sport: Basketball }
+const sceneBgs = {
+  dorm: 'linear-gradient(135deg,#f7e1e3,#f4d5d8)',
+  study: 'linear-gradient(135deg,#f3e6d4,#ead9a0)',
+  digital: 'linear-gradient(135deg,#f5e7a8,#ead9a0)',
+  life: 'linear-gradient(135deg,#f4d5d8,#f7e1e3)',
+  bike: 'linear-gradient(135deg,#dde3e8,#ece3dc)',
+  sport: 'linear-gradient(135deg,#f3e6d4,#f5ead0)'
+}
+const scenes = SCENES.map(s => ({ ...s, icon: sceneIcons[s.key], bg: sceneBgs[s.key] }))
 const tips = [
   '优先选择同校区的同学面交，避免异地邮寄风险。',
   '面交时约在图书馆、宿舍楼下等公共明亮场所。',
@@ -509,9 +558,14 @@ const animateStats = () => {
   requestAnimationFrame(tick)
 }
 
-// ===== 区块进入动画（IntersectionObserver + stagger）=====
+// ===== 区块进入动画（IntersectionObserver）=====
+// 指令式注册：区块挂载时才加入观察。
+// 之前的实现是在 onMounted 一次性 querySelectorAll，异步数据返回后才渲染的
+// v-if 区块（校园专区/热门分类/最近浏览）永远拿不到 is-visible，停留在 opacity:0
+// 表现为"页面大片空白"。改为 v-reveal 指令后，晚挂载的区块也能正常渐入。
 let revealObserver = null
-const setupReveal = () => {
+const ensureRevealObserver = () => {
+  if (revealObserver) return revealObserver
   revealObserver = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
@@ -520,7 +574,16 @@ const setupReveal = () => {
       }
     })
   }, { threshold: 0.08 })
-  document.querySelectorAll('.block--reveal').forEach(el => revealObserver.observe(el))
+  return revealObserver
+}
+const vReveal = {
+  mounted(el) {
+    el.classList.add('block--reveal')
+    ensureRevealObserver().observe(el)
+  },
+  unmounted(el) {
+    if (revealObserver) revealObserver.unobserve(el)
+  }
 }
 
 // ===== Hero 浮动卡片视差（mousemove + rAF 节流）=====
@@ -554,19 +617,23 @@ const goSort = (sortBy) => router.push({ path: '/goods', query: { sortBy } })
 const goGoodsList = () => router.push('/goods')
 const goGoods = (id) => router.push(`/goods/${id}`)
 const goPublish = () => router.push('/seller')
+const goScene = (key) => router.push({ path: '/goods', query: { scene: key } })
 
 // ===== 数据加载 =====
 const loadOverview = async () => {
   try {
     const res = await request.get('/home/overview')
     overview.value = res || {}
+    // 有真实校区时默认选中第一个并懒加载该校区商品
     if (campuses.value.length) {
       activeCampus.value = campuses.value[0]
-      loadCampusGoods()
+      loadCampusGoods(activeCampus.value)
     }
     nextTick(observeStats)
   } catch (e) {
     overview.value = {}
+  } finally {
+    loading.overview = false
   }
 }
 
@@ -588,6 +655,8 @@ const loadCategories = async () => {
     categories.value = Array.isArray(res) ? res : []
   } catch (e) {
     categories.value = []
+  } finally {
+    loading.category = false
   }
 }
 
@@ -624,22 +693,27 @@ const loadLatest = async () => {
   }
 }
 
-const loadCampusGoods = async () => {
+// 校园专区商品：按校区懒加载并缓存。
+// 首次进入只加载默认校区；Tab 切换时若该校区尚未加载则真正发起请求
+const loadCampusGoods = async (campus) => {
+  if (!campus) return
   loading.campus = true
   try {
-    const results = await Promise.all(
-      campuses.value.map(c =>
-        request.get('/goods/page', { params: { campus: c, pageSize: 4 } })
-          .then(res => ({ c, list: res?.list || [] }))
-          .catch(() => ({ c, list: [] }))
-      )
-    )
-    const map = {}
-    results.forEach(r => { map[r.c] = r.list })
-    campusGoodsMap.value = map
+    const res = await request.get('/goods/page', { params: { campus, pageSize: 4 } })
+    campusGoodsMap.value = { ...campusGoodsMap.value, [campus]: res?.list || [] }
+  } catch (e) {
+    campusGoodsMap.value = { ...campusGoodsMap.value, [campus]: [] }
   } finally {
     loading.campus = false
-    nextTick(loadFavoriteStates)
+    loadFavoriteStates()
+  }
+}
+
+// Tab 切换：已缓存的校区直接展示，未缓存的校区按需重新加载
+const switchCampus = (campus) => {
+  activeCampus.value = campus
+  if (!(campus in campusGoodsMap.value)) {
+    loadCampusGoods(campus)
   }
 }
 
@@ -676,8 +750,9 @@ const findGoods = (id) => {
 const handleToggleFavorite = async (goodsId) => {
   if (!isLogin) { ElMessage.warning('请先登录后再收藏'); return }
   if (favLoadingIds.value.has(goodsId)) return
-  favLoadingIds.value = new Set(favLoadingIds.value).add(goodsId)
-  favLoadingIds.value = new Set(favLoadingIds.value)
+  const loadingSet = new Set(favLoadingIds.value)
+  loadingSet.add(goodsId)
+  favLoadingIds.value = loadingSet
   const isFav = favoriteIds.value.has(goodsId)
   try {
     const result = isFav
@@ -718,12 +793,9 @@ const loadRecentViews = () => {
 onMounted(() => {
   loadOverview()
   loadCategories()
-  loadHot()
-  loadTreasure()
-  loadLatest()
-  // hot/treasure/latest 加载完后回显收藏（campus 加载完也会再调一次，幂等）
+  loadRecentViews()
+  // hot/treasure/latest 加载完后统一回显收藏状态（校园专区加载完也会再调一次，幂等）
   Promise.all([loadHot(), loadTreasure(), loadLatest()]).then(loadFavoriteStates)
-  nextTick(setupReveal)
 })
 
 onBeforeUnmount(() => {
@@ -880,6 +952,14 @@ onBeforeUnmount(() => {
   background: #fff; box-shadow: 0 14px 36px rgba(74,69,72,.14);
   border: 4px solid #fff; transition: transform .25s ease;
 }
+.float-card__inner {
+  width: 100%; height: 100%; position: relative;
+  animation: floatBob 6s ease-in-out infinite;
+}
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
 .float-card img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .4s ease; }
 .float-card img.is-loaded { opacity: 1; }
 .float-card__fallback {
@@ -899,8 +979,9 @@ onBeforeUnmount(() => {
 .float-card--placeholder { background: linear-gradient(135deg,#f0e6df,#f7eee7); }
 .hero__float-skeleton .float-card { animation: floatBob 4s ease-in-out infinite; }
 
-/* ========== 大家长尾都在看（1+4） ========== */
+/* ========== 大家最近都在看（1+4） ========== */
 .hot-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
+.hot-main.skel { height: 360px; }
 .hot-main {
   border-radius: 20px; overflow: hidden; background: #fff; cursor: pointer;
   box-shadow: var(--brand-shadow-sm, 0 8px 24px rgba(74,69,72,.08));
@@ -954,7 +1035,7 @@ onBeforeUnmount(() => {
 .scene-card__name { font-size: 14px; font-weight: 600; color: var(--home-text); }
 .scene-card__desc { font-size: 11.5px; color: var(--home-text-soft); }
 
-/* ========== 校园专区 tab ========== */
+/* ========== 校园专区 tab / 空态 ========== */
 .campus-tabs { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .campus-tab {
   border: 1px solid var(--home-border); background: #fff; cursor: pointer;
@@ -963,6 +1044,29 @@ onBeforeUnmount(() => {
 }
 .campus-tab:hover { color: var(--home-primary-hover); border-color: var(--home-primary); }
 .campus-tab.is-active { background: var(--home-primary); color: #fff; border-color: var(--home-primary); }
+
+/* 区块通用空态（校园专区 / 热门分类 / 最近浏览共用视觉） */
+.campus-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 44px 20px; border-radius: 20px;
+  background: linear-gradient(135deg, var(--home-bg-cream), var(--home-bg-pink-soft));
+  border: 1px dashed var(--home-primary-soft);
+  text-align: center;
+}
+.campus-empty__icon { font-size: 40px; color: var(--home-primary); opacity: .75; }
+.campus-empty__title { font-size: 16px; font-weight: 700; color: var(--home-text); }
+.campus-empty__desc { font-size: 13px; color: var(--home-text-soft); max-width: 420px; line-height: 1.7; }
+
+.skel--cat { height: 96px; border-radius: 16px; }
+
+.recent-empty {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 34px 20px; border-radius: 18px;
+  background: linear-gradient(135deg, var(--home-bg-cream), var(--home-bg-pink-soft));
+  border: 1px dashed var(--home-primary-soft);
+}
+.recent-empty__icon { font-size: 22px; color: var(--home-primary); }
+.recent-empty__text { font-size: 14px; color: var(--home-text-soft); }
 
 /* ========== 热门分类 ========== */
 .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 14px; }
