@@ -22,7 +22,7 @@
           <el-icon><DocumentAdd /></el-icon>批量发布
         </el-button>
 
-        <el-button type="primary" @click="handleAdd">
+        <el-button type="primary" @click="goPublish">
           <el-icon><Plus /></el-icon>发布商品
         </el-button>
       </div>
@@ -198,7 +198,7 @@
           class="goods-empty"
           :description="emptyText"
       >
-        <el-button type="primary" @click="hasFilters ? handleReset() : handleAdd()">
+        <el-button type="primary" @click="hasFilters ? handleReset() : goPublish()">
           {{ hasFilters ? '清空筛选条件' : '发布第一件商品' }}
         </el-button>
       </el-empty>
@@ -989,28 +989,12 @@ const form = ref({
 
 
 // =========================
-// 点击"发布商品"
+// 点击"发布商品"：统一跳转到 /publish 发布工作台
+// （原弹窗发布已升级为独立页面；本页仅保留编辑弹窗与批量发布）
 // =========================
 
-const handleAdd = () => {
-  isEdit.value = false
-
-  form.value = {
-    goodsId: null,
-    userId: Number(localStorage.getItem('userId')),
-    categoryId: null,
-    goodsName: '',
-    description: '',
-    price: null,
-    conditionLevel: null,
-    campus: '',
-    location: ''
-  }
-
-  // 新发布：清空图片列表
-  uploadFileList.value = []
-
-  dialogVisible.value = true
+const goPublish = () => {
+  router.push('/publish')
 }
 
 

@@ -104,7 +104,8 @@ import {
   SwitchButton,
   ArrowDown,
   RefreshRight,
-  Promotion
+  Promotion,
+  CirclePlus
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -170,6 +171,13 @@ const menus = [
     path: '/orders',
     roles: ['student', 'seller', 'admin'],
     icon: Tickets
+  },
+  {
+    // 发布工作台：seller 直接发布；student 进入引导页（成为卖家漏斗入口）
+    name: '发布商品',
+    path: '/publish',
+    roles: ['student', 'seller'],
+    icon: CirclePlus
   },
   {
     name: '成为卖家',

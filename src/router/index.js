@@ -92,6 +92,16 @@ const router = createRouter({
           }
         },
         {
+          // 我的商品发布工作台：seller 使用完整发布表单，
+          // student 进入看到「成为卖家」引导页（页面内分流）；admin 无发布入口
+          path: 'publish',
+          component: () => import('../views/Publish.vue'),
+          meta: {
+            title: '发布商品',
+            roles: ['student', 'seller']
+          }
+        },
+        {
           path: 'seller-apply',
           component: () => import('../views/SellerApply.vue'),
           meta: {
