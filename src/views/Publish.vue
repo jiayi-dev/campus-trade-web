@@ -1,9 +1,14 @@
 <template>
   <!--
-    /publish 我的商品发布工作台（一页一成品）
+    /publish 我的商品发布工作台（一页一成品，create / edit 双模式复用）
     角色分流：
     - seller：完整发布工作台（Hero + 表单 + 实时预览 + 操作条 + 成功反馈）
     - student：引导面板（成为卖家后即可发布，跳 /seller-apply）
+    双模式：
+    - 新建 /publish        ：POST /goods 创建 → POST /goods/{id}/images 关联图片
+    - 编辑 /publish?id=26  ：GET /goods/{id} + GET /goods/{id}/images 回填
+                            → PUT /goods 更新 → POST /goods/{id}/images 全量替换图片
+                            （后端 checkOwnership 真实拦截越权，前端仅做体验层校验）
     真实业务链路：
       图片：选择 → POST /upload/image（multipart）→ 返回 URL（暂存于 file-list）
       商品：POST /goods（JSON，seller 身份由后端 AuthContext 认定）→ 文本返回商品ID
@@ -92,8 +97,10 @@
         <div class="hero__inner">
           <div class="hero__copy">
             <span class="hero__eyebrow">SELL YOUR ITEM · 卖家工作台</span>
-            <h1 class="hero__title">发布一件商品</h1>
-            <p class="hero__sub">让闲置物品找到校园里的下一位主人</p>
+            <h1 class="hero__title">{{ isEditMode ? '编辑商品' : '发布一件商品' }}</h1>
+            <p class="hero__sub">
+              {{ isEditMode ? '修改商品信息与图片，保存后即刻生效' : '让闲置物品找到校园里的下一位主人' }}
+            </p>
             <div class="hero__tips">
               <span class="hero__tip"><el-icon><Camera /></el-icon>清晰实拍图更容易卖出</span>
               <span class="hero__tip"><el-icon><PriceTag /></el-icon>参考原价合理定价</span>
@@ -111,7 +118,7 @@
       </section>
 
       <!-- 2. 主区：左表单右预览 -->
-      <div class="workspace">
+      <div v-loading="editLoading" class="workspace">
         <div class="workspace__form">
 
           <!-- 商品图片 -->
@@ -314,7 +321,7 @@
             </div>
 
             <div class="preview__missing" v-if="missingFields.length">
-              <span class="preview__missing-label">发布前还需完善：</span>
+              <span class="preview__missing-label">{{ isEditMode ? '保存前还需完善：' : '发布前还需完善：' }}</span>
               <span
                   v-for="m in missingFields"
                   :key="m"
@@ -322,21 +329,34 @@
               >{{ m }}</span>
             </div>
             <div v-else class="preview__ready">
-              <el-icon><CircleCheckFilled /></el-icon>信息已就绪，可以发布
+              <el-icon><CircleCheckFilled /></el-icon>{{ isEditMode ? '信息已就绪，可以保存' : '信息已就绪，可以发布' }}
             </div>
           </div>
         </aside>
       </div>
 
-      <!-- 3. 底部操作条 -->
+      <!-- 3. 底部操作条（编辑模式：草稿无意义，主按钮换为保存修改） -->
       <div class="actionbar">
         <div class="actionbar__inner">
-          <button class="actionbar__draft" @click="saveDraft">
+          <button v-if="!isEditMode" class="actionbar__draft" @click="saveDraft">
             <el-icon><Collection /></el-icon>暂存草稿
           </button>
+          <span v-else class="actionbar__edit-hint">
+            正在编辑商品 #{{ editId }}，保存后图片与信息将全量更新
+          </span>
           <div class="actionbar__right">
-            <el-button size="large" @click="goMarket">取消</el-button>
+            <el-button size="large" @click="isEditMode ? goSeller() : goMarket()">取消</el-button>
             <el-button
+                v-if="isEditMode"
+                type="primary"
+                size="large"
+                :loading="saving"
+                @click="handleSaveEdit"
+            >
+              {{ saving ? '正在保存…' : '保存修改' }}
+            </el-button>
+            <el-button
+                v-else
                 type="primary"
                 size="large"
                 :loading="publishing"
@@ -354,7 +374,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Delete, ArrowLeft, ArrowRight, Loading, Camera, PriceTag,
@@ -364,7 +384,20 @@ import GoodsCard from '../components/GoodsCard.vue'
 import { formatPrice } from '../utils/format'
 import request from '../utils/request'
 
+const route = useRoute()
 const router = useRouter()
+
+// =========================
+// 双模式：/publish 新建 / /publish?id=26 编辑（复用同一套工作台）
+// =========================
+
+const editId = Number(route.query.id)
+const isEditMode = computed(() => Number.isInteger(editId) && editId > 0)
+
+// 编辑回填加载中（覆盖整个工作区）
+const editLoading = ref(false)
+
+const currentUserId = Number(localStorage.getItem('userId'))
 
 // =========================
 // 角色与页面状态
@@ -519,7 +552,7 @@ const removeImage = (file) => {
 // =========================
 
 const previewGoods = computed(() => ({
-  goodsId: 0,
+  goodsId: isEditMode.value ? editId : 0,
   goodsName: form.value.goodsName || '商品标题会显示在这里',
   description: form.value.description,
   price: form.value.price ?? 0,
@@ -684,6 +717,104 @@ const handlePublish = async () => {
 }
 
 // =========================
+// 编辑模式：回填（商品信息 + 全部图片）与保存
+// =========================
+
+// 进入 /publish?id=N：拉取商品详情与图片列表回填工作台
+const loadEditGoods = async () => {
+  editLoading.value = true
+
+  try {
+    const [g, imgs] = await Promise.all([
+      request.get(`/goods/${editId}`),
+      request.get(`/goods/${editId}/images`).catch(() => [])
+    ])
+
+    if (!g || !g.goodsId) {
+      ElMessage.error('商品不存在或已被删除')
+      router.replace('/seller')
+      return
+    }
+
+    // 前端体验层校验：别人的商品直接劝退；
+    // 真正的越权拦截在后端 PUT /goods 与图片接口的 checkOwnership（知道商品ID也改不了）
+    if (g.userId !== currentUserId) {
+      ElMessage.error('只能编辑自己发布的商品')
+      router.replace('/seller')
+      return
+    }
+
+    form.value = {
+      goodsName: g.goodsName || '',
+      categoryId: g.categoryId ?? null,
+      price: g.price !== null && g.price !== undefined ? Number(g.price) : null,
+      conditionLevel: g.conditionLevel ?? null,
+      campus: g.campus || '',
+      location: g.location || '',
+      description: g.description || ''
+    }
+
+    // 已有图片回填为上传成功态条目，与刚上传的图片同一套排序/删除/主图交互
+    uploadFileList.value = (Array.isArray(imgs) ? imgs : []).map((url, i) => ({
+      name: `图片${i + 1}`,
+      url,
+      status: 'success'
+    }))
+  } catch (e) {
+    ElMessage.error('商品信息加载失败，请稍后再试')
+    router.replace('/seller')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+const saving = ref(false)
+
+// 保存编辑：PUT 更新商品主记录 → 图片全量替换（先删后插幂等，第一张自动主图）
+const handleSaveEdit = async () => {
+  if (saving.value || !validate()) return
+  saving.value = true
+
+  try {
+    const result = await request.put('/goods', {
+      goodsId: editId,
+      goodsName: form.value.goodsName.trim(),
+      categoryId: form.value.categoryId,
+      price: form.value.price,
+      conditionLevel: form.value.conditionLevel,
+      campus: form.value.campus || null,
+      location: form.value.location.trim() || null,
+      description: form.value.description.trim()
+    })
+
+    // 项目既有风格：HTTP 200 + 文本表达业务结果（越权时文本为拒绝原因）
+    if (result !== '商品修改成功') {
+      ElMessage.error(result || '商品保存失败，请稍后再试')
+      return
+    }
+
+    // 图片全量替换：上传列表即最终形态（删除+新增+排序一次生效）；
+    // 空数组也是合法意图（删光图片），后端先删后插 0 条
+    const imgResult = await request.post(`/goods/${editId}/images`, {
+      imageUrls: uploadedUrls.value
+    })
+
+    if (imgResult !== '商品图片保存成功') {
+      ElMessage.warning(imgResult || '商品信息已保存，但图片保存失败，请再次保存')
+    } else {
+      ElMessage.success('商品修改成功')
+    }
+
+    // 保存后回到商品详情，立刻看到最新效果
+    router.push(`/goods/${editId}`)
+  } catch (e) {
+    // request.js 已按错误类型统一提示（401/403/5xx/网络错误）
+  } finally {
+    saving.value = false
+  }
+}
+
+// =========================
 // 成功页动作
 // =========================
 
@@ -718,12 +849,20 @@ const confettiStyle = (n) => {
 // =========================
 
 const goMarket = () => router.push('/goods')
+const goSeller = () => router.push('/seller')
 const goSellerApply = () => router.push('/seller-apply')
 
 onMounted(async () => {
   window.addEventListener('role-changed', handleRoleChanged)
   loadCategories()
   loadCampuses()
+
+  // 编辑模式：回填数据库中的商品，与本地草稿是两个互不干扰的场景
+  if (isEditMode.value) {
+    await loadEditGoods()
+    return
+  }
+
   await restoreDraftIfAny()
 })
 
@@ -1243,6 +1382,11 @@ onBeforeUnmount(() => {
 .actionbar__draft:hover {
   color: var(--brand-primary-active);
   background: var(--brand-primary-soft);
+}
+
+.actionbar__edit-hint {
+  font-size: 13px;
+  color: var(--brand-text-secondary);
 }
 
 .actionbar__right {

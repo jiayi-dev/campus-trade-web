@@ -24,89 +24,125 @@
 
       <div v-loading="loading" class="detail-layout">
 
-        <!-- 左侧：商品主体 + 留言 -->
+        <!-- 左侧：图片 Gallery + 商品信息 + 留言 -->
         <div class="detail-main">
 
           <el-card shadow="never" class="goods-card-panel">
 
-            <div class="goods-hero">
+            <!-- =========================
+                 图片 Gallery：大图 + 缩略图 + 序号 + 左右切换
+                 列表页只显示主图（快速浏览），详情页展示全部图片（完整查看）
+                 ========================= -->
+            <div v-if="displayUrls.length > 0" class="gallery">
 
-              <!-- 封面：多图轮播 / 单图 / 无图莫兰迪色块兜底（图片加载失败也回退色块） -->
-              <div class="goods-hero__cover">
-                <el-carousel
-                    v-if="displayUrls.length > 1"
-                    class="goods-hero__carousel"
-                    height="240px"
-                    :autoplay="false"
-                    arrow="hover"
-                    indicator-position="none"
-                >
-                  <el-carousel-item
-                      v-for="(url, index) in displayUrls"
-                      :key="url"
-                  >
-                    <img
-                        :src="url"
-                        :alt="`${goods.goodsName} 图片${index + 1}`"
-                        class="goods-hero__img"
-                        @error="handleImgError(index)"
-                    />
-                  </el-carousel-item>
-                </el-carousel>
-
-                <img
-                    v-else-if="displayUrls.length === 1"
-                    :src="displayUrls[0]"
-                    :alt="goods.goodsName"
-                    class="goods-hero__img"
-                    @error="handleImgError(0)"
+              <!-- 大图区：el-image 自带点击放大预览，复用 Element Plus 能力不引新依赖 -->
+              <div class="gallery__stage">
+                <el-image
+                    :key="currentUrl"
+                    :src="currentUrl"
+                    :alt="`${goods.goodsName} 图片${activeIndex + 1}`"
+                    fit="contain"
+                    class="gallery__image"
+                    :preview-src-list="displayUrls"
+                    :initial-index="activeIndex"
+                    preview-teleported
+                    @error="handleImgError(activeIndex)"
                 />
 
-                <div
-                    v-else
-                    class="goods-hero__fallback"
-                    :class="`cover--${coverTheme}`"
-                >
-                  <el-icon><ShoppingBag /></el-icon>
-                  <span>{{ categoryName || '未分类' }}</span>
-                </div>
+                <!-- 左右切换（多图才显示），stop 防止触发图片预览 -->
+                <template v-if="displayUrls.length > 1">
+                  <button type="button" class="gallery__arrow gallery__arrow--prev" @click.stop="prevImage">
+                    <el-icon><ArrowLeft /></el-icon>
+                  </button>
+                  <button type="button" class="gallery__arrow gallery__arrow--next" @click.stop="nextImage">
+                    <el-icon><ArrowRight /></el-icon>
+                  </button>
+                </template>
+
+                <!-- 序号徽标 -->
+                <span class="gallery__counter">{{ activeIndex + 1 }} / {{ displayUrls.length }}</span>
+
+                <!-- 封面（主图）徽标：第一张即主图，与 goods_image.is_primary 对应 -->
+                <span v-if="activeIndex === 0" class="gallery__primary-badge">封面</span>
               </div>
 
-              <div class="goods-hero__info">
-                <div class="goods-hero__tags">
-                  <el-tag size="small" type="info" effect="plain">
-                    {{ categoryName || '未分类' }}
-                  </el-tag>
-                  <el-tag size="small" :type="goods.status === 1 ? 'success' : 'info'">
-                    {{ goods.status === 1 ? '在售中' : '已下架' }}
-                  </el-tag>
+              <!-- 缩略图条（多图才显示） -->
+              <div v-if="displayUrls.length > 1" class="gallery__thumbs">
+                <button
+                    v-for="(url, index) in displayUrls"
+                    :key="url"
+                    type="button"
+                    class="gallery__thumb"
+                    :class="{ 'gallery__thumb--active': index === activeIndex }"
+                    @click="activeIndex = index"
+                >
+                  <img :src="url" :alt="`缩略图${index + 1}`" @error="handleImgError(index)" />
+                </button>
+              </div>
+
+            </div>
+
+            <!-- 无图 / 全部加载失败：莫兰迪色块兜底 -->
+            <div v-else class="gallery__fallback" :class="`cover--${coverTheme}`">
+              <el-icon><ShoppingBag /></el-icon>
+              <span>{{ categoryName || '未分类' }}</span>
+              <em>卖家还没有上传图片</em>
+            </div>
+
+            <!-- 商品核心信息 -->
+            <div class="goods-info">
+
+              <div class="goods-info__tags">
+                <el-tag size="small" type="info" effect="plain">
+                  {{ categoryName || '未分类' }}
+                </el-tag>
+                <el-tag v-if="conditionText" size="small" effect="plain" class="condition-tag">
+                  {{ conditionText }}
+                </el-tag>
+                <el-tag size="small" :type="statusTag.type">
+                  {{ statusTag.text }}
+                </el-tag>
+              </div>
+
+              <h1 class="goods-info__name">{{ goods.goodsName }}</h1>
+
+              <div class="goods-info__price price-text">
+                {{ formatPrice(goods.price) }}
+              </div>
+
+              <!-- 交易信息网格：校区 / 面交地点 / 发布时间 / 浏览收藏 -->
+              <div class="goods-info__meta">
+                <div class="meta-item">
+                  <el-icon><School /></el-icon>
+                  <span class="meta-item__label">交易校区</span>
+                  <span class="meta-item__value">{{ goods.campus || '卖家未填写' }}</span>
                 </div>
-
-                <h1 class="goods-hero__name">{{ goods.goodsName }}</h1>
-
-                <div class="goods-hero__price price-text">
-                  {{ formatPrice(goods.price) }}
+                <div class="meta-item">
+                  <el-icon><Location /></el-icon>
+                  <span class="meta-item__label">面交地点</span>
+                  <span class="meta-item__value">{{ goods.location || '卖家未填写' }}</span>
                 </div>
-
-                <div class="goods-hero__time">
+                <div class="meta-item">
                   <el-icon><Clock /></el-icon>
-                  发布于 {{ formatDateTime(goods.createTime) }}
-                  <el-divider direction="vertical" />
+                  <span class="meta-item__label">发布时间</span>
+                  <span class="meta-item__value">{{ formatDateTime(goods.createTime) }}</span>
+                </div>
+                <div class="meta-item">
                   <el-icon><View /></el-icon>
-                  {{ goods.viewCount ?? 0 }} 次浏览
-                  <el-divider direction="vertical" />
-                  <el-icon><Star /></el-icon>
-                  {{ goods.favoriteCount ?? 0 }} 人收藏
+                  <span class="meta-item__label">浏览 / 收藏</span>
+                  <span class="meta-item__value">
+                    {{ goods.viewCount ?? 0 }} 次浏览 · {{ goods.favoriteCount ?? 0 }} 人收藏
+                  </span>
                 </div>
               </div>
 
             </div>
 
-            <!-- 下架提示 -->
+            <!-- 下架 / 已售提示 -->
             <el-alert
                 v-if="goods.status !== 1"
-                title="该商品已下架，可能已经被卖出或由卖家撤下"
-                type="warning"
+                :title="goods.sold ? '该商品已售出，看看其他类似闲置吧' : '该商品已下架，可能已经被卖家撤下'"
+                :type="goods.sold ? 'success' : 'warning'"
                 :closable="false"
                 show-icon
                 class="goods-offline-alert"
@@ -125,7 +161,7 @@
           </el-card>
 
           <!-- 留言区 -->
-          <el-card shadow="never" class="message-panel">
+          <el-card shadow="never" class="message-panel" id="message-panel">
 
             <h3 class="goods-section__title">
               <el-icon><ChatDotRound /></el-icon>
@@ -136,6 +172,7 @@
             <!-- 发布留言 -->
             <div class="message-editor">
               <el-input
+                  ref="messageInputRef"
                   v-model="messageContent"
                   type="textarea"
                   :rows="3"
@@ -197,15 +234,46 @@
 
           <el-card shadow="never" class="action-panel">
 
-            <!-- 自己的商品 -->
-            <el-alert
-                v-if="isOwnGoods"
-                title="这是你自己发布的商品"
-                type="info"
-                :closable="false"
-                center
-            />
+            <!-- 商品主人：编辑 / 上下架 / 删除（真正的权限校验在后端 checkOwnership） -->
+            <template v-if="isOwnGoods">
 
+              <el-button
+                  type="primary"
+                  size="large"
+                  class="owner-btn"
+                  @click="goEdit"
+              >
+                <el-icon><EditPen /></el-icon>编辑商品
+              </el-button>
+
+              <!-- 已售出（有订单）的商品不能重新上架，后端会拒绝，前端直接隐藏 -->
+              <el-button
+                  v-if="!goods.sold"
+                  class="owner-btn"
+                  :loading="statusChanging"
+                  @click="toggleStatus"
+              >
+                <el-icon><Sell /></el-icon>
+                {{ goods.status === 1 ? '下架商品' : '重新上架' }}
+              </el-button>
+
+              <el-button
+                  type="danger"
+                  plain
+                  class="owner-btn"
+                  :loading="deleting"
+                  @click="handleDelete"
+              >
+                <el-icon><Delete /></el-icon>删除商品
+              </el-button>
+
+              <div class="action-tip">
+                这是你自己发布的商品
+              </div>
+
+            </template>
+
+            <!-- 普通买家：购买 / 收藏 / 联系卖家 -->
             <template v-else>
               <!-- 立即购买：交易主入口 -->
               <el-button
@@ -217,7 +285,7 @@
                   @click="handleBuy"
               >
                 <el-icon v-if="!buying"><ShoppingCart /></el-icon>
-                {{ goods.status === 1 ? '立即购买' : '商品已下架' }}
+                {{ goods.status === 1 ? '立即购买' : (goods.sold ? '商品已售出' : '商品已下架') }}
               </el-button>
 
               <!-- 收藏按钮 -->
@@ -236,8 +304,13 @@
                 {{ isFavorite ? '已收藏' : '收藏商品' }}
               </el-button>
 
+              <!-- 联系卖家：锚点滚动到留言区并聚焦输入框 -->
+              <el-button class="contact-btn" @click="scrollToMessage">
+                <el-icon><ChatDotRound /></el-icon>联系卖家
+              </el-button>
+
               <div v-if="goods.status !== 1" class="action-tip">
-                商品已下架，可能已经被卖出
+                {{ goods.sold ? '商品已售出，看看其他类似闲置吧' : '商品已下架，可能已经被卖家撤下' }}
               </div>
             </template>
 
@@ -303,6 +376,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
+  ArrowRight,
   Star,
   StarFilled,
   Phone,
@@ -313,7 +387,12 @@ import {
   User,
   ShoppingBag,
   ShoppingCart,
-  View
+  View,
+  School,
+  Location,
+  EditPen,
+  Delete,
+  Sell
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
@@ -340,11 +419,14 @@ const isFavorite = ref(false)
 const favLoading = ref(false)
 
 const buying = ref(false)
+const statusChanging = ref(false)
+const deleting = ref(false)
 
 const messages = ref([])
 const messageLoading = ref(false)
 const messageContent = ref('')
 const messageSubmitting = ref(false)
+const messageInputRef = ref(null)
 
 const currentUserId = Number(localStorage.getItem('userId'))
 
@@ -353,6 +435,24 @@ const isOwnGoods = computed(() => goods.value.userId === currentUserId)
 const categoryName = computed(() => {
   const cat = categories.value.find(c => c.categoryId === goods.value.categoryId)
   return cat ? cat.categoryName : ''
+})
+
+// 成色映射：与 goods.condition_level 及商品卡片 CONDITION_MAP 保持一致
+const CONDITION_MAP = {
+  1: '全新',
+  2: '99新',
+  3: '95新',
+  4: '9成新',
+  5: '8成新及以下'
+}
+
+const conditionText = computed(() => CONDITION_MAP[goods.value.conditionLevel] || '')
+
+// 商品状态：在售 / 已售出（下架+有订单，后端 sold 字段）/ 已下架
+const statusTag = computed(() => {
+  if (goods.value.status === 1) return { text: '在售中', type: 'success' }
+  if (goods.value.sold) return { text: '已售出', type: 'warning' }
+  return { text: '已下架', type: 'info' }
 })
 
 // 角色展示映射
@@ -381,10 +481,14 @@ const avatarTheme = (userId) => {
 }
 
 // =========================
-// 商品图片：详情页展示（多图轮播 / 单图 / 无图色块兜底）
+// 图片 Gallery：主图在前的完整图片列表
+// 单图、多图、无图、加载失败四种情况都能正常展示
 // =========================
 
 const imageUrls = ref([])
+
+// 当前展示的大图下标
+const activeIndex = ref(0)
 
 // 加载失败的图片下标集合：失败图片自动从展示列表剔除，全部失败回退色块
 const failedUrls = ref(new Set())
@@ -393,10 +497,28 @@ const displayUrls = computed(() => {
   return imageUrls.value.filter((_, index) => !failedUrls.value.has(index))
 })
 
+const currentUrl = computed(() => displayUrls.value[activeIndex.value] || '')
+
 const handleImgError = (index) => {
   const next = new Set(failedUrls.value)
   next.add(index)
   failedUrls.value = next
+  // 当前大图被剔除时，下标收敛回有效范围
+  if (activeIndex.value >= displayUrls.value.length) {
+    activeIndex.value = Math.max(0, displayUrls.value.length - 1)
+  }
+}
+
+const prevImage = () => {
+  const len = displayUrls.value.length
+  if (len < 2) return
+  activeIndex.value = (activeIndex.value - 1 + len) % len
+}
+
+const nextImage = () => {
+  const len = displayUrls.value.length
+  if (len < 2) return
+  activeIndex.value = (activeIndex.value + 1) % len
 }
 
 
@@ -453,6 +575,7 @@ const loadPage = async () => {
   // 商品图片列表（主图在前，加载失败默认无图走色块兜底）
   if (imgRes.status === 'fulfilled' && Array.isArray(imgRes.value)) {
     imageUrls.value = imgRes.value
+    activeIndex.value = 0
   }
 
   loading.value = false
@@ -595,6 +718,7 @@ const handleBuy = async () => {
       ElMessage.success(result)
       // 商品已随订单下架，同步本地状态让按钮立即禁用
       goods.value.status = 0
+      goods.value.sold = true
       // 跳到交易中心的“我的购买”
       router.push({ path: '/orders', query: { tab: 'buyer' } })
     } else {
@@ -603,6 +727,7 @@ const handleBuy = async () => {
       // 被别人抢买时，刷新页面上的商品状态
       if (result && result.includes('买走')) {
         goods.value.status = 0
+        goods.value.sold = true
       }
     }
   } catch (error) {
@@ -610,6 +735,83 @@ const handleBuy = async () => {
   } finally {
     buying.value = false
   }
+}
+
+
+// =========================
+// 商品主人操作：编辑 / 上下架 / 删除
+// 前端只控制按钮展示，真正的越权拦截在后端 checkOwnership
+// =========================
+
+// 编辑：复用发布工作台的编辑模式（同一套表单 / 上传 / 校验，不复制第二套代码）
+const goEdit = () => {
+  router.push({ path: '/publish', query: { id: goodsId } })
+}
+
+// 上架 / 下架：独立接口承载业务规则（已产生交易记录的商品不能重新上架）
+const toggleStatus = async () => {
+  const targetStatus = goods.value.status === 1 ? 0 : 1
+
+  statusChanging.value = true
+
+  try {
+    const result = await request.put(`/goods/${goodsId}/status`, { status: targetStatus })
+
+    if (result === '商品已上架' || result === '商品已下架') {
+      goods.value.status = targetStatus
+      ElMessage.success(result)
+    } else {
+      ElMessage.error(result || '操作失败，请稍后再试')
+    }
+  } catch (error) {
+    // request.js 已统一弹出网络错误
+  } finally {
+    statusChanging.value = false
+  }
+}
+
+// 删除：二次确认；已产生交易记录的商品后端会拒绝删除
+const handleDelete = async () => {
+  try {
+    await ElMessageBox.confirm(
+        `确认删除「${goods.value.goodsName}」吗？删除后商品与图片将一并移除，无法恢复。`,
+        '删除商品',
+        {
+          confirmButtonText: '确认删除',
+          cancelButtonText: '再想想',
+          type: 'warning'
+        }
+    )
+  } catch (action) {
+    return
+  }
+
+  deleting.value = true
+
+  try {
+    const result = await request.delete(`/goods/${goodsId}`)
+
+    if (result === '商品删除成功') {
+      ElMessage.success(result)
+      router.push('/seller')
+    } else {
+      ElMessage.error(result || '删除失败，请稍后再试')
+    }
+  } catch (error) {
+    // request.js 已统一弹出网络错误
+  } finally {
+    deleting.value = false
+  }
+}
+
+
+// =========================
+// 联系卖家：滚动到留言区并聚焦输入框
+// =========================
+
+const scrollToMessage = () => {
+  document.getElementById('message-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  messageInputRef.value?.focus()
 }
 
 
@@ -708,24 +910,134 @@ onMounted(loadPage)
   border-radius: var(--brand-radius-lg);
 }
 
-.goods-hero {
-  display: flex;
-  gap: 26px;
-}
+/* =========================
+   图片 Gallery
+   ========================= */
 
-.goods-hero__cover {
-  width: 240px;
-  height: 240px;
-  flex-shrink: 0;
+.gallery__stage {
+  position: relative;
+  width: 100%;
+  height: 460px;
   border-radius: var(--brand-radius-lg);
   overflow: hidden;
+  background: #f7f1e8;
 }
 
-.goods-hero__carousel :deep(.el-carousel__container) {
-  height: 240px;
+.gallery__image {
+  width: 100%;
+  height: 100%;
+  transition: transform 0.45s ease;
 }
 
-.goods-hero__img {
+/* 主图 hover 轻微 zoom，交互服务于查看细节 */
+.gallery__stage:hover .gallery__image {
+  transform: scale(1.03);
+}
+
+.gallery__image :deep(.el-image__inner) {
+  cursor: zoom-in;
+}
+
+/* 左右切换箭头：hover 大图时浮现 */
+.gallery__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand-text);
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.25s ease, background 0.25s ease;
+  box-shadow: 0 2px 10px rgba(90, 70, 50, 0.14);
+  z-index: 2;
+}
+
+.gallery__stage:hover .gallery__arrow {
+  opacity: 1;
+}
+
+.gallery__arrow:hover {
+  background: #fff;
+}
+
+.gallery__arrow--prev {
+  left: 14px;
+}
+
+.gallery__arrow--next {
+  right: 14px;
+}
+
+/* 序号徽标 */
+.gallery__counter {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: rgba(60, 50, 40, 0.55);
+  color: #fff;
+  font-size: 12.5px;
+  letter-spacing: 0.5px;
+  z-index: 2;
+}
+
+/* 封面徽标 */
+.gallery__primary-badge {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--brand-accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  z-index: 2;
+}
+
+/* 缩略图条 */
+.gallery__thumbs {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.gallery__thumb {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--brand-radius, 10px);
+  overflow: hidden;
+  background: #f7f1e8;
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.gallery__thumb:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+.gallery__thumb--active {
+  border-color: var(--brand-primary);
+  opacity: 1;
+}
+
+.gallery__thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -733,21 +1045,29 @@ onMounted(loadPage)
 }
 
 /* 无图兜底：莫兰迪色块（与商品卡片同一套配色） */
-.goods-hero__fallback {
+.gallery__fallback {
   width: 100%;
-  height: 100%;
+  height: 320px;
+  border-radius: var(--brand-radius-lg);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   font-size: 17px;
   font-weight: 600;
 }
 
-.goods-hero__fallback .el-icon {
+.gallery__fallback .el-icon {
   font-size: 56px;
   opacity: 0.5;
+}
+
+.gallery__fallback em {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 .cover--cream {
@@ -770,38 +1090,71 @@ onMounted(loadPage)
   color: #70808c;
 }
 
-.goods-hero__info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+/* =========================
+   商品核心信息
+   ========================= */
+
+.goods-info {
+  margin-top: 20px;
 }
 
-.goods-hero__tags {
+.goods-info__tags {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
-.goods-hero__name {
-  margin: 14px 0 16px;
+.condition-tag {
+  color: var(--brand-accent);
+  border-color: var(--brand-accent);
+}
+
+.goods-info__name {
+  margin: 12px 0 14px;
   font-size: 24px;
   line-height: 1.35;
   color: var(--brand-text);
 }
 
-.goods-hero__price {
+.goods-info__price {
   font-size: 34px;
   line-height: 1.1;
 }
 
-.goods-hero__time {
-  margin-top: auto;
-  padding-top: 14px;
+.goods-info__meta {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  padding: 16px 18px;
+  border-radius: var(--brand-radius, 10px);
+  background: rgba(216, 168, 173, 0.07);
+}
+
+.meta-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 13px;
+  gap: 7px;
+  font-size: 13.5px;
+  min-width: 0;
+}
+
+.meta-item .el-icon {
+  color: var(--brand-primary);
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.meta-item__label {
   color: var(--brand-text-secondary);
+  flex-shrink: 0;
+}
+
+.meta-item__value {
+  color: var(--brand-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .goods-offline-alert {
@@ -938,6 +1291,7 @@ onMounted(loadPage)
 
 .fav-btn {
   width: 100%;
+  margin-bottom: 10px;
 }
 
 .fav-btn.fav-active {
@@ -956,8 +1310,17 @@ onMounted(loadPage)
   margin-right: 4px;
 }
 
+.contact-btn {
+  width: 100%;
+}
+
+.owner-btn {
+  width: 100%;
+  margin: 0 0 10px;
+}
+
 .action-tip {
-  margin-top: 10px;
+  margin-top: 2px;
   text-align: center;
   font-size: 12.5px;
   color: var(--brand-text-secondary);
@@ -1015,17 +1378,16 @@ onMounted(loadPage)
     position: static;
   }
 
-  .goods-hero {
-    flex-direction: column;
+  .gallery__stage {
+    height: 300px;
   }
 
-  .goods-hero__cover {
-    width: 100%;
-    height: 180px;
+  .gallery__fallback {
+    height: 220px;
   }
 
-  .goods-hero__carousel :deep(.el-carousel__container) {
-    height: 180px;
+  .goods-info__meta {
+    grid-template-columns: 1fr;
   }
 }
 

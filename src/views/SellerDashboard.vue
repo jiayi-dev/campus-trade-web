@@ -100,7 +100,7 @@
 
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="scope">
-            <el-button type="primary" link @click="handleEdit(scope.row)">
+            <el-button type="primary" link @click="goEdit(scope.row)">
               编辑
             </el-button>
             <el-button
@@ -232,58 +232,8 @@
 
     </el-card>
 
-    <!-- 编辑商品弹窗（不含状态字段，上下架走专门操作） -->
-    <el-dialog v-model="dialogVisible" title="编辑商品" width="500px">
-
-      <el-form label-width="90px">
-
-        <el-form-item label="商品名称">
-          <el-input v-model="form.goodsName" placeholder="请输入商品名称" />
-        </el-form-item>
-
-        <el-form-item label="商品分类">
-          <el-select
-              v-model="form.categoryId"
-              placeholder="请选择分类"
-              style="width: 100%"
-          >
-            <el-option
-                v-for="cat in categories"
-                :key="cat.categoryId"
-                :label="cat.categoryName"
-                :value="cat.categoryId"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="商品价格">
-          <el-input-number
-              v-model="form.price"
-              :min="0"
-              :precision="2"
-              controls-position="right"
-              placeholder="请输入商品价格"
-              style="width: 100%"
-          />
-        </el-form-item>
-
-        <el-form-item label="商品描述">
-          <el-input
-              v-model="form.description"
-              type="textarea"
-              :rows="4"
-              placeholder="请输入商品描述"
-          />
-        </el-form-item>
-
-      </el-form>
-
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
-      </template>
-
-    </el-dialog>
+    <!-- 编辑已迁移到发布工作台的编辑模式（/publish?id=N）：
+         与发布共用完整表单 + 图片上传/排序/主图，不再维护第二套简化弹窗 -->
 
   </div>
 </template>
@@ -318,7 +268,6 @@ const categories = ref([])
 
 const loadingGoods = ref(false)
 const loadingOrders = ref(false)
-const saving = ref(false)
 const statusChangingId = ref(null)
 const finishingId = ref(null)
 
@@ -435,65 +384,12 @@ const goOrders = () => {
 
 
 // =========================
-// 编辑商品
+// 编辑商品：跳转发布工作台的编辑模式（/publish?id=N）
+// 与发布共用完整表单 + 图片上传/排序/主图，不再维护第二套简化弹窗
 // =========================
 
-const dialogVisible = ref(false)
-
-const form = ref({
-  goodsId: null,
-  categoryId: null,
-  goodsName: '',
-  description: '',
-  price: null
-})
-
-const handleEdit = (goods) => {
-  form.value = {
-    goodsId: goods.goodsId,
-    categoryId: goods.categoryId,
-    goodsName: goods.goodsName,
-    description: goods.description,
-    price: goods.price
-  }
-
-  dialogVisible.value = true
-}
-
-const handleSave = async () => {
-  if (!form.value.goodsName || !form.value.goodsName.trim()) {
-    ElMessage.warning('请输入商品名称')
-    return
-  }
-
-  if (!form.value.categoryId) {
-    ElMessage.warning('请选择商品分类')
-    return
-  }
-
-  if (form.value.price === null || form.value.price === '') {
-    ElMessage.warning('请输入商品价格')
-    return
-  }
-
-  saving.value = true
-
-  try {
-    const result = await request.put('/goods', form.value)
-
-    if (result === '商品修改成功') {
-      ElMessage.success(result)
-      dialogVisible.value = false
-      loadGoods()
-    } else {
-      // 归属校验失败 / 内容校验失败等业务错误
-      ElMessage.error(result || '商品修改失败')
-    }
-  } catch (error) {
-    // request.js 已统一提示
-  } finally {
-    saving.value = false
-  }
+const goEdit = (goods) => {
+  router.push({ path: '/publish', query: { id: goods.goodsId } })
 }
 
 
