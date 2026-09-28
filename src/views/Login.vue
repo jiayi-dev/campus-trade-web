@@ -12,6 +12,11 @@
           校园二手交易平台
         </div>
 
+        <router-link to="/landing" class="auth-brand__back">
+          <el-icon><ArrowLeft /></el-icon>
+          返回校园二手交易首页
+        </router-link>
+
         <div>
           <div class="auth-brand__title">
             让闲置物品<br />在校园里继续流转
@@ -106,7 +111,7 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Location, ChatDotRound, Promotion, RefreshRight } from '@element-plus/icons-vue'
+import { User, Lock, Location, ChatDotRound, Promotion, RefreshRight, ArrowLeft } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import request from '../utils/request'
 
@@ -198,6 +203,21 @@ const handleLogin = async () => {
   color: var(--brand-text-secondary);
   text-align: center;
   line-height: 1.5;
+}
+
+.auth-brand__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.auth-brand__back:hover {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 </style>
