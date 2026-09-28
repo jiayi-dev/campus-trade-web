@@ -449,7 +449,8 @@ const counterpartyName = (order) => {
 const resolveImageUrl = (url) => {
   if (!url) return ''
   if (url.startsWith('http://') || url.startsWith('https://')) return url
-  return '/api' + (url.startsWith('/') ? url : '/' + url)
+  // 后端返回的 URL 已含 /api 前缀（如 /api/files/goods/xxx.png），不再二次拼接
+  return url
 }
 
 const onImageError = (order) => {

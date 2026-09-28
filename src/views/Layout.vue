@@ -31,6 +31,12 @@
         </el-menu-item>
       </el-menu>
 
+      <!-- 游客模式：登录 / 注册入口 -->
+      <div v-if="!isLoggedIn" class="guest-nav">
+        <router-link to="/login" class="guest-nav__link">登录</router-link>
+        <router-link to="/register" class="guest-nav__link guest-nav__link--register">注册</router-link>
+      </div>
+
       <!-- 侧边栏底部版本信息 -->
       <div class="sidebar__footer">V1.1 产品增强版</div>
 
@@ -45,7 +51,7 @@
           {{ currentTitle }}
         </div>
 
-        <el-dropdown trigger="click" @command="handleCommand">
+        <el-dropdown v-if="isLoggedIn" trigger="click" @command="handleCommand">
           <div class="user">
             <div class="user__avatar">
               {{ username.charAt(0).toUpperCase() }}
@@ -78,6 +84,12 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+
+        <!-- 游客模式顶部栏：登录 / 注册按钮 -->
+        <div v-else class="header__guest">
+          <router-link to="/login" class="header__guest-login">登录</router-link>
+          <router-link to="/register" class="header__guest-register">注册</router-link>
+        </div>
 
       </header>
 
@@ -115,6 +127,10 @@ const route = useRoute()
 const username = ref(localStorage.getItem('username') || '')
 const role = ref(localStorage.getItem('role') || '')
 
+// 游客模式：未登录时侧边栏显示登录/注册入口，顶部栏显示登录/注册按钮
+// 已登录则走原有的用户头像+下拉退出流程
+const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+
 // 从后端 /auth/me 拉取数据库真实角色并同步到本地缓存与响应式 role
 // 作用：学生卖家申请被通过后，无需重新登录，下次进入 Layout（包括刷新页面 / 重新登录）
 //      即可拿到 seller 身份；同时也兼容本地缓存被人为篡改的情况
@@ -144,7 +160,11 @@ const handleRoleChanged = (e) => {
 }
 
 onMounted(() => {
-  refreshRoleFromServer()
+  // 游客不调用 /auth/me：没有 Token 会返回 401，浏览器控制台报错
+  // 游客只能访问 /goods 和 /goods/:id，菜单为空，无需校准角色
+  if (isLoggedIn.value) {
+    refreshRoleFromServer()
+  }
   window.addEventListener('role-changed', handleRoleChanged)
 })
 
@@ -201,6 +221,10 @@ const menus = [
 
 // 按角色过滤菜单
 const visibleMenus = computed(() => {
+  // 游客只显示"市场"一项，其他业务菜单需登录后才能使用
+  if (!isLoggedIn.value) {
+    return [{ name: '市场', path: '/goods', icon: ShoppingBag }]
+  }
   return menus.filter(menu => menu.roles.includes(role.value))
 })
 
@@ -425,6 +449,104 @@ const handleLogout = () => {
   flex: 1;
   overflow-y: auto;
   padding: 24px 26px;
+}
+
+/* ========== 游客模式：侧边栏登录/注册入口 ========== */
+
+.guest-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 16px 8px;
+  margin-top: auto;
+}
+
+.guest-nav__link {
+  display: block;
+  text-align: center;
+  padding: 10px 0;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  transition: all 0.2s ease;
+}
+
+.guest-nav__link:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.guest-nav__link--register {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand-text, #2b4a4a);
+  border-color: transparent;
+}
+
+.guest-nav__link--register:hover {
+  background: #fff;
+}
+
+/* ========== 游客模式：顶部栏登录/注册按钮 ========== */
+
+.header__guest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header__guest-login,
+.header__guest-register {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.header__guest-login {
+  background: var(--brand-bg-soft, #f5ede2);
+  color: var(--brand-text, #2b4a4a);
+  border: 1px solid var(--brand-border, #ece2d3);
+}
+
+.header__guest-login:hover {
+  background: var(--brand-bg-hover, #efe3d1);
+}
+
+.header__guest-register {
+  background: var(--brand-sidebar-gradient);
+  color: #fff;
+}
+
+.header__guest-register:hover {
+  filter: brightness(1.05);
+}
+
+/* 窄屏：游客入口同样保留，仅收窄内边距 */
+@media (max-width: 860px) {
+  .guest-nav {
+    padding: 12px 8px 6px;
+  }
+
+  .guest-nav__link {
+    font-size: 12px;
+    padding: 8px 0;
+  }
+
+  .header__guest-login,
+  .header__guest-register {
+    padding: 0 12px;
+    font-size: 12px;
+  }
 }
 
 /* 窄屏收窄侧边栏，只留图标 */

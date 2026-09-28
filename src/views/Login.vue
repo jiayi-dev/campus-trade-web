@@ -112,10 +112,11 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Location, ChatDotRound, Promotion, RefreshRight, ArrowLeft } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import request from '../utils/request'
 
 const router = useRouter()
+const route = useRoute()
 
 // 当前登录身份
 // user：学生 / 卖家共用入口；admin：管理员专用入口
@@ -162,9 +163,11 @@ const handleLogin = async () => {
     // 4. 提示登录成功
     ElMessage.success('登录成功')
 
-    // 5. 跳转到首页
+    // 5. 跳转目标：优先 redirect 参数（游客从某商品页过来登录后回原页），
+    //    没有 redirect 则回 /home
     //    Layout 在 mount 时会再次调用 /auth/me 校准角色，保证真实 role 立即生效
-    await router.push('/home')
+    const redirect = route.query.redirect
+    await router.push(redirect || '/home')
 
   } catch (error) {
 

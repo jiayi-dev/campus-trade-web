@@ -509,14 +509,15 @@ const anchors = [
 // ============ 导航意图（所有 CTA 都有真实去向，无死链） ============
 const goLogin = () => router.push('/login')
 const goRegister = () => router.push('/register')
-// 逛市场：已登录进入市场首页；未登录先进登录流程（直接 push /home 会被守卫弹回 /landing）
-const goMarket = () => router.push(isLogin ? '/home' : '/login')
+// 逛市场：游客可直接进入商品市场浏览，无需登录
+// 已登录用户也进 /goods（市场是公开的，/home 是登录后的个人工作台）
+const goMarket = () => router.push('/goods')
 // AI 需要登录态：未登录先进登录流程，已登录进入正式 AI 页面
 const goAi = () => router.push(isLogin ? '/ai-assistant' : '/login')
-// 真实商品卡：已登录直达商品详情；未登录先登录
-const goGoods = (id) => router.push(isLogin ? `/goods/${id}` : '/login')
-// 场景卡：复用 GoodsList.applyRouteQuery 的 /goods?scene=<key>，不做第二套筛选
-const goScene = (key) => router.push(isLogin ? { path: '/goods', query: { scene: key } } : '/login')
+// 真实商品卡：游客可直达商品详情，受限操作在详情页内部门禁
+const goGoods = (id) => router.push(`/goods/${id}`)
+// 场景卡：复用 GoodsList.applyRouteQuery 的 /goods?scene=<key>，游客同样可进入
+const goScene = (key) => router.push({ path: '/goods', query: { scene: key } })
 // Logo：回到 /landing（导航只存在于 Landing，本页时回顶，跨页时回落地页）
 const goLanding = () => {
   if (router.currentRoute.value.path !== '/landing') {

@@ -170,7 +170,15 @@
             </h3>
 
             <!-- 发布留言 -->
-            <div class="message-editor">
+            <!-- 游客：留言区显示登录提示，不渲染输入框 -->
+            <div v-if="isGuest" class="message-editor__guest">
+              <el-icon><ChatDotRound /></el-icon>
+              <p>登录后才能给卖家留言</p>
+              <el-button size="small" type="primary" plain @click="onGuestSellerLogin">去登录</el-button>
+            </div>
+
+            <!-- 已登录用户：正常留言编辑器 -->
+            <div v-else class="message-editor">
               <el-input
                   ref="messageInputRef"
                   v-model="messageContent"
@@ -352,6 +360,13 @@
                 </div>
               </template>
 
+              <!-- 游客：登录后查看卖家联系方式 -->
+              <div v-else-if="isGuest" class="seller-box__guest">
+                <el-icon><Lock /></el-icon>
+                <p>登录后查看卖家联系方式</p>
+                <el-button size="small" type="primary" plain @click="onGuestSellerLogin">去登录</el-button>
+              </div>
+
               <div v-else-if="!sellerLoading" class="seller-box__error">
                 卖家信息暂时无法获取
               </div>
@@ -392,13 +407,19 @@ import {
   Location,
   EditPen,
   Delete,
-  Sell
+  Sell,
+  Lock
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
+import { isLoggedIn, requireLogin } from '../utils/auth'
 
 const route = useRoute()
 const router = useRouter()
+
+// 游客标识（模板用）：localStorage 非响应式，computed 在挂载时求值一次即可
+// 登录态变化（requireLogin→/login→回到本页）会触发组件重新挂载，isGuest 会重新求值
+const isGuest = computed(() => !localStorage.getItem('token'))
 
 // 路由参数：/goods/:id 中的 id 就是商品ID
 const goodsId = Number(route.params.id)
@@ -430,7 +451,9 @@ const messageInputRef = ref(null)
 
 const currentUserId = Number(localStorage.getItem('userId'))
 
-const isOwnGoods = computed(() => goods.value.userId === currentUserId)
+// 商品主人判断：游客 currentUserId 为 NaN，永远不是自己的商品
+// 这样游客会走"普通买家"分支，但所有买家操作都会触发 requireLogin
+const isOwnGoods = computed(() => isLoggedIn() && goods.value.userId === currentUserId)
 
 const categoryName = computed(() => {
   const cat = categories.value.find(c => c.categoryId === goods.value.categoryId)
@@ -537,13 +560,23 @@ const loadPage = async () => {
 
   loading.value = true
 
-  const [detailRes, favRes, msgRes, catRes, imgRes] = await Promise.allSettled([
+  // 游客不请求 /favorite/check 和 /messages/goods：这俩接口需 Token，
+  // 游客请求会 401，污染浏览器控制台。游客默认未收藏、留言列表为空
+  const loggedIn = isLoggedIn()
+
+  const requests = [
     request.get(`/goods/${goodsId}`),
-    request.get(`/favorite/check/${goodsId}`),
-    request.get(`/messages/goods/${goodsId}`),
+    null,
+    null,
     request.get('/categories'),
     request.get(`/goods/${goodsId}/images`)
-  ])
+  ]
+  if (loggedIn) {
+    requests[1] = request.get(`/favorite/check/${goodsId}`)
+    requests[2] = request.get(`/messages/goods/${goodsId}`)
+  }
+
+  const [detailRes, favRes, msgRes, catRes, imgRes] = await Promise.allSettled(requests)
 
   // 商品详情：主链路，拿不到数据直接走“商品不存在”
   if (detailRes.status === 'rejected' || !detailRes.value) {
@@ -557,13 +590,13 @@ const loadPage = async () => {
   // 记录最近浏览到 localStorage，首页“最近浏览”区块读取展示（仅本地体验）
   recordRecentView(goods.value)
 
-  // 收藏状态（附加能力，失败默认未收藏）
-  if (favRes.status === 'fulfilled') {
+  // 收藏状态（附加能力，失败或游客默认未收藏）
+  if (favRes.status === 'fulfilled' && favRes.value) {
     isFavorite.value = !!favRes.value.favorite
   }
 
-  // 留言列表（附加能力，失败默认空列表）
-  if (msgRes.status === 'fulfilled') {
+  // 留言列表（附加能力，失败或游客默认空列表）
+  if (msgRes.status === 'fulfilled' && msgRes.value) {
     messages.value = Array.isArray(msgRes.value) ? msgRes.value : []
   }
 
@@ -581,7 +614,10 @@ const loadPage = async () => {
   loading.value = false
 
   // 浏览量上报：商品加载成功后调用，后端原子 +1 并返回最新值
-  reportView()
+  // 游客浏览量不上报：/goods/{id}/view 需 Token，游客请求会 401
+  if (isLoggedIn()) {
+    reportView()
+  }
 
   // 卖家信息依赖商品详情中的 userId，在商品加载成功后单独请求
   loadSeller()
@@ -633,6 +669,14 @@ const recordRecentView = (g) => {
 const loadSeller = async () => {
   if (!goods.value.userId) return
 
+  // 游客不请求 /user/{id}：接口需 Token，游客请求会 401
+  // 卖家联系方式（手机/邮箱）属于敏感信息，登录后可见
+  if (!isLoggedIn()) {
+    sellerLoading.value = false
+    seller.value = null
+    return
+  }
+
   sellerLoading.value = true
 
   try {
@@ -663,6 +707,12 @@ const loadMessages = async () => {
 // =========================
 
 const toggleFavorite = async () => {
+  // 游客门禁：不直接请求后端，弹出登录提示
+  if (!isLoggedIn()) {
+    await requireLogin('登录后即可收藏商品', route.fullPath)
+    return
+  }
+
   favLoading.value = true
 
   try {
@@ -691,6 +741,11 @@ const toggleFavorite = async () => {
 // =========================
 
 const handleBuy = async () => {
+  // 游客门禁：购买是强交易行为，必须登录
+  if (!isLoggedIn()) {
+    await requireLogin('登录后才能进行交易', route.fullPath)
+    return
+  }
 
   // 二次确认，防止误操作
   try {
@@ -806,10 +861,23 @@ const handleDelete = async () => {
 
 
 // =========================
+// 游客：卖家信息区的"去登录"按钮
+// =========================
+const onGuestSellerLogin = () => {
+  requireLogin('登录后即可查看卖家联系方式', route.fullPath)
+}
+
+
+// =========================
 // 联系卖家：滚动到留言区并聚焦输入框
 // =========================
 
 const scrollToMessage = () => {
+  // 游客门禁：联系卖家本质是发留言，必须登录
+  if (!isLoggedIn()) {
+    requireLogin('登录后才能联系卖家', route.fullPath)
+    return
+  }
   document.getElementById('message-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   messageInputRef.value?.focus()
 }
@@ -820,6 +888,12 @@ const scrollToMessage = () => {
 // =========================
 
 const submitMessage = async () => {
+  // 游客门禁：留言需要绑定用户身份，必须登录
+  if (!isLoggedIn()) {
+    await requireLogin('登录后才能联系卖家', route.fullPath)
+    return
+  }
+
   const content = messageContent.value.trim()
 
   if (!content) {
@@ -1201,6 +1275,28 @@ onMounted(loadPage)
   margin-bottom: 20px;
 }
 
+/* 游客：留言区登录提示 */
+.message-editor__guest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.message-editor__guest .el-icon {
+  font-size: 22px;
+  color: var(--brand-text-secondary);
+}
+
+.message-editor__guest p {
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+  margin: 0;
+}
+
 .message-editor__footer {
   margin-top: 10px;
   display: flex;
@@ -1366,6 +1462,27 @@ onMounted(loadPage)
   font-size: 13px;
   text-align: center;
   padding: 16px 0;
+}
+
+/* 游客：卖家信息登录提示 */
+.seller-box__guest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0;
+  text-align: center;
+}
+
+.seller-box__guest .el-icon {
+  font-size: 22px;
+  color: var(--brand-text-secondary);
+}
+
+.seller-box__guest p {
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+  margin: 0;
 }
 
 /* 窄屏：两栏堆叠 */

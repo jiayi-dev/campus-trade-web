@@ -33,15 +33,13 @@ const router = createRouter({
     },
 
     {
-      // 根路径直达品牌落地页（不经过 /home 间接重定向，登录状态不影响该默认入口）。
-      // Layout 仍以 / 为基路径，保证 /home、/goods 等业务 URL 不变；
-      // 命中 '' 索引子路由时立即重定向到 /landing，Layout 不会渲染。
+      // 根路径：Layout 作为壳，游客和已登录用户均可进入
+      // 命中 '' 索引子路由时重定向到 /landing
       path: '/',
       component: () => import('../views/Layout.vue'),
 
       children: [
         {
-          // GET / → /landing（公开页，未登录/已登录均先看到品牌入口）
           path: '',
           redirect: '/landing'
         },
@@ -54,50 +52,51 @@ const router = createRouter({
           }
         },
 
+        // ====== 游客可访问的公开页面 ======
         {
+          // 商品市场：游客可浏览，无需登录
           path: 'goods',
           component: () => import('../views/GoodsList.vue'),
           meta: {
             title: '商品中心',
-            roles: ['student', 'seller', 'admin']
+            public: true
           }
         },
-
         {
-          // :id 是路由参数，商品卡片点击后携带 goodsId 进入详情页
+          // 商品详情：游客可查看全部商品信息与图片
           path: 'goods/:id',
           component: () => import('../views/GoodsDetail.vue'),
           meta: {
             title: '商品详情',
-            roles: ['student', 'seller', 'admin']
+            public: true
           }
         },
 
+        // ====== 以下页面需要登录 ======
         {
           path: 'orders',
           component: () => import('../views/OrderList.vue'),
           meta: {
             title: '交易中心',
+            requireAuth: true,
             roles: ['student', 'seller', 'admin']
           }
-
         },
         {
-          // AI 校园闲置助手：独立业务页面（Agent 能力规划中，页面架构先行）
           path: 'ai-assistant',
           component: () => import('../views/AiAssistant.vue'),
           meta: {
             title: 'AI 校园闲置助手',
+            requireAuth: true,
             roles: ['student', 'seller', 'admin']
           }
         },
         {
-          // 我的商品发布工作台：seller 使用完整发布表单，
-          // student 进入看到「成为卖家」引导页（页面内分流）；admin 无发布入口
           path: 'publish',
           component: () => import('../views/Publish.vue'),
           meta: {
             title: '发布商品',
+            requireAuth: true,
             roles: ['student', 'seller']
           }
         },
@@ -106,6 +105,7 @@ const router = createRouter({
           component: () => import('../views/SellerApply.vue'),
           meta: {
             title: '申请成为卖家',
+            requireAuth: true,
             roles: ['student']
           }
         },
@@ -114,6 +114,7 @@ const router = createRouter({
           component: () => import('../views/SellerDashboard.vue'),
           meta: {
             title: '我的店铺',
+            requireAuth: true,
             roles: ['seller']
           }
         },
@@ -122,6 +123,7 @@ const router = createRouter({
           component: () => import('../views/AdminDashboard.vue'),
           meta: {
             title: '管理后台',
+            requireAuth: true,
             roles: ['admin']
           }
         }
@@ -135,21 +137,31 @@ router.beforeEach((to) => {
   const token = localStorage.getItem('token')
   const role = localStorage.getItem('role')
 
-  // 登录 / 注册等公开页面直接放行
+  // 公开页面直接放行（landing/login/register/goods/goods/:id）
   if (to.meta.public) {
     return true
   }
 
-  // 没登录 → 登录前产品首页（/landing），而不是直接弹到登录页
-  if (!token) {
+  // 需要登录的页面：未登录 → 登录页，携带 redirect
+  if (to.meta.requireAuth && !token) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+
+  // 已登录但角色不匹配 → 首页
+  const roles = to.meta.roles
+  if (roles && token && !roles.includes(role)) {
+    return '/home'
+  }
+
+  // 未登录访问 /home：Home 是登录后的个人工作台，游客应回 Landing 公开首页
+  // （Landing 有"先逛逛市场"入口引导游客进入商品市场）
+  if (!token && to.path === '/home') {
     return '/landing'
   }
 
-  // 有角色限制，但当前角色不在允许范围
-  const roles = to.meta.roles
-
-  if (roles && !roles.includes(role)) {
-    return '/home'
+  // 未登录访问其他需要登录但未标记 requireAuth 的页面
+  if (!token && roles && !to.meta.public) {
+    return { path: '/login', query: { redirect: to.fullPath } }
   }
 
   return true

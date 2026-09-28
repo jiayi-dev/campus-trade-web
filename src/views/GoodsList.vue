@@ -502,6 +502,7 @@ import {
 import GoodsCard from '../components/GoodsCard.vue'
 import { formatPrice, formatDateTime } from '../utils/format'
 import { findScene } from '../utils/scenes'
+import { isLoggedIn, requireLogin } from '../utils/auth'
 import request from '../utils/request'
 
 const router = useRouter()
@@ -673,6 +674,13 @@ const loadGoods = async () => {
 
 // 批量查询当前页商品的收藏状态（一次请求，避免每张卡片单独请求）
 const loadFavoriteStates = async () => {
+  // 游客不请求收藏状态：/favorite/checkBatch 需 Token，游客请求会 401
+  // 游客默认所有商品未收藏，点击收藏会触发 requireLogin
+  if (!isLoggedIn()) {
+    favoriteIds.value = new Set()
+    return
+  }
+
   const ids = goodsList.value
       .filter(g => g.userId !== currentUserId)
       .map(g => g.goodsId)
@@ -698,6 +706,12 @@ const loadFavoriteStates = async () => {
 // 前端再以 favLoadingId 防止连点导致的并发请求
 const handleToggleFavorite = async (goodsId) => {
   if (favLoadingId.value !== null) return
+
+  // 游客门禁：未登录不直接请求后端，弹出登录提示
+  if (!isLoggedIn()) {
+    await requireLogin('登录后即可收藏商品', route.fullPath)
+    return
+  }
 
   const goods = goodsList.value.find(g => g.goodsId === goodsId)
   if (!goods) return
