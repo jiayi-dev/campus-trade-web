@@ -5,7 +5,11 @@
     真实接口：
       GET /orders/buyer  → 买家订单（JOIN goods+user+goods_image，带 campus/location）
       GET /orders/seller → 卖家订单
-      PUT /orders/{id}/status { orderStatus: 1 } → 确认完成（0→1，后端校验参与者身份）
+      PUT /orders/{id}/status { orderStatus: 1 } → 卖家确认已交付（0→1，后端校验 seller）
+      PUT /orders/{id}/status { orderStatus: 2 } → 买家确认收货（1→2，后端校验 buyer）
+
+    订单状态机（校园面交模型）：
+      0 待交易 → 1 待买家确认（卖家交付）→ 2 已完成（买家确认收货）
   -->
   <div class="trade-page">
 
@@ -28,6 +32,10 @@
           <div class="stat-pill">
             <span class="stat-pill__num">{{ pendingCount }}</span>
             <span class="stat-pill__label">待交易</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-pill__num">{{ confirmingCount }}</span>
+            <span class="stat-pill__label">待确认</span>
           </div>
           <div class="stat-pill">
             <span class="stat-pill__num">{{ doneCount }}</span>
@@ -62,6 +70,7 @@
         <el-radio-group v-model="statusFilter" size="small" @change="onFilterChange">
           <el-radio-button value="all">全部</el-radio-button>
           <el-radio-button value="pending">待交易</el-radio-button>
+          <el-radio-button value="confirming">待确认</el-radio-button>
           <el-radio-button value="done">已完成</el-radio-button>
         </el-radio-group>
         <el-button :icon="Refresh" :loading="loading" size="small" @click="reload">刷新</el-button>
@@ -147,26 +156,51 @@
           </div>
         </div>
 
-        <!-- 操作区 -->
+        <!-- 操作区：按当前用户在订单中的角色 + 订单状态渲染
+             卖家：待交易→[确认已交付] / 待确认→等待买家确认 / 已完成→交易已完成
+             买家：待交易→等待卖家交付 / 待确认→[确认收货] / 已完成→交易已完成 -->
         <div class="order-card__actions">
           <el-button size="default" class="action-btn" @click="openDetail(order)">
             <el-icon><View /></el-icon>
             订单详情
           </el-button>
+
+          <!-- 卖家确认已交付：0 → 1 -->
           <el-button
-              v-if="Number(order.orderStatus) === 0"
+              v-if="cardAction(order).kind === 'deliver'"
+              type="primary"
+              size="default"
+              class="action-btn"
+              :loading="actingId === order.orderId"
+              @click="handleSellerDeliver(order)"
+          >
+            <el-icon v-if="actingId !== order.orderId"><Van /></el-icon>
+            确认已交付
+          </el-button>
+
+          <!-- 买家确认收货：1 → 2 -->
+          <el-button
+              v-else-if="cardAction(order).kind === 'confirm'"
               type="success"
               size="default"
               class="action-btn"
-              :loading="finishingId === order.orderId"
-              @click="handleFinish(order)"
+              :loading="actingId === order.orderId"
+              @click="handleBuyerConfirm(order)"
           >
-            <el-icon v-if="finishingId !== order.orderId"><CircleCheck /></el-icon>
-            确认完成
+            <el-icon v-if="actingId !== order.orderId"><CircleCheck /></el-icon>
+            确认收货
           </el-button>
-          <div v-else class="order-card__done">
+
+          <!-- 等待态：等待卖家交付 / 等待买家确认 -->
+          <div v-else-if="cardAction(order).kind === 'wait'" class="order-card__wait">
+            <el-icon><Clock /></el-icon>
+            {{ cardAction(order).text }}
+          </div>
+
+          <!-- 已完成 -->
+          <div v-else-if="cardAction(order).kind === 'done'" class="order-card__done">
             <el-icon><CircleCheckFilled /></el-icon>
-            交易已结束
+            交易已完成
           </div>
         </div>
       </div>
@@ -266,42 +300,62 @@
           </div>
         </div>
 
-        <!-- 交易时间线 -->
+        <!-- 交易时间线：面交 → 交付 → 买家确认 → 完成
+             数据库只有 create_time，故仅“下单成功”显示真实时间，
+             其余节点只显示业务状态文案，不伪造时间戳 -->
         <div class="detail-section">
           <h4 class="detail-section__title">交易进度</h4>
           <div class="timeline">
-            <div class="timeline__item timeline__item--done">
-              <div class="timeline__dot"></div>
-              <div class="timeline__content">
-                <div class="timeline__title">下单成功</div>
-                <div class="timeline__time">{{ formatDateTime(detailOrder.createTime) }}</div>
-              </div>
-            </div>
-            <div class="timeline__line" :class="{ 'timeline__line--done': Number(detailOrder.orderStatus) === 1 }"></div>
-            <div class="timeline__item" :class="{ 'timeline__item--done': Number(detailOrder.orderStatus) === 1 }">
-              <div class="timeline__dot"></div>
-              <div class="timeline__content">
-                <div class="timeline__title">
-                  {{ Number(detailOrder.orderStatus) === 1 ? '交易完成' : '待交易中' }}
-                </div>
-                <div class="timeline__time">
-                  {{ Number(detailOrder.orderStatus) === 1
-                      ? '买卖双方任一确认完成'
-                      : '等待线下交接与确认' }}
+            <template v-for="(step, idx) in detailTimeline" :key="idx">
+              <div class="timeline__item" :class="`timeline__item--${step.state}`">
+                <div class="timeline__dot"></div>
+                <div class="timeline__content">
+                  <div class="timeline__title">{{ step.title }}</div>
+                  <div class="timeline__time">{{ step.desc }}</div>
                 </div>
               </div>
-            </div>
+              <div
+                  v-if="idx < detailTimeline.length - 1"
+                  class="timeline__line"
+                  :class="{ 'timeline__line--done': detailTimeline[idx + 1].state === 'done' }"
+              ></div>
+            </template>
           </div>
         </div>
 
-        <!-- 操作区 -->
-        <div v-if="Number(detailOrder.orderStatus) === 0" class="detail-footer">
+        <!-- 操作区：与订单卡片使用同一套角色 + 状态规则，保证两处一致 -->
+        <div class="detail-footer">
           <el-button
+              v-if="cardAction(detailOrder).kind === 'deliver'"
+              type="primary"
+              size="large"
+              :loading="actingId === detailOrder.orderId"
+              @click="handleSellerDeliver(detailOrder)"
+          >
+            <el-icon v-if="actingId !== detailOrder.orderId"><Van /></el-icon>
+            确认已交付
+          </el-button>
+
+          <el-button
+              v-else-if="cardAction(detailOrder).kind === 'confirm'"
               type="success"
               size="large"
-              :loading="finishingId === detailOrder.orderId"
-              @click="handleFinish(detailOrder)"
-          >确认交易完成</el-button>
+              :loading="actingId === detailOrder.orderId"
+              @click="handleBuyerConfirm(detailOrder)"
+          >
+            <el-icon v-if="actingId !== detailOrder.orderId"><CircleCheck /></el-icon>
+            确认收货
+          </el-button>
+
+          <span v-else-if="cardAction(detailOrder).kind === 'wait'" class="detail-footer__wait">
+            <el-icon><Clock /></el-icon>
+            {{ cardAction(detailOrder).text }}
+          </span>
+
+          <span v-else-if="cardAction(detailOrder).kind === 'done'" class="detail-footer__done">
+            <el-icon><CircleCheckFilled /></el-icon>
+            交易已完成
+          </span>
         </div>
       </template>
     </el-drawer>
@@ -317,7 +371,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh, ShoppingBag, Shop, Picture, View,
   CircleCheck, CircleCheckFilled, Box, Tickets,
-  School, Location, User, Clock, CircleCloseFilled
+  School, Location, User, Clock, CircleCloseFilled, Van
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime } from '../utils/format'
@@ -333,7 +387,8 @@ const statusFilter = ref('all')
 const orders = ref([])
 const loading = ref(false)
 const loadError = ref(false)
-const finishingId = ref(null)
+// 当前正在进行状态流转的订单ID（卖家交付 / 买家确认共用，防重复点击）
+const actingId = ref(null)
 
 const buyerCount = ref(0)
 const sellerCount = ref(0)
@@ -390,15 +445,18 @@ const reload = async () => {
 
 const totalCount = computed(() => orders.value.length)
 const pendingCount = computed(() => orders.value.filter(o => Number(o.orderStatus) === 0).length)
-const doneCount = computed(() => orders.value.filter(o => Number(o.orderStatus) === 1).length)
+const confirmingCount = computed(() => orders.value.filter(o => Number(o.orderStatus) === 1).length)
+const doneCount = computed(() => orders.value.filter(o => Number(o.orderStatus) === 2).length)
 
 // =========================
 // 状态筛选（前端过滤，不额外打后端）
 // =========================
 
+const FILTER_STATUS_MAP = { pending: 0, confirming: 1, done: 2 }
+
 const filteredOrders = computed(() => {
   if (statusFilter.value === 'all') return orders.value
-  const target = statusFilter.value === 'pending' ? 0 : 1
+  const target = FILTER_STATUS_MAP[statusFilter.value]
   return orders.value.filter(o => Number(o.orderStatus) === target)
 })
 
@@ -415,19 +473,101 @@ const switchTab = (tab) => {
 // 状态展示
 // =========================
 
+// 订单状态文案（全交易中心统一，卡片 / Drawer / 筛选共用一套定义）
+// 0 待交易 / 1 待买家确认 / 2 已完成
 const statusText = (status) => {
   const s = Number(status)
   if (s === 0) return '待交易'
-  if (s === 1) return '已完成'
+  if (s === 1) return '待买家确认'
+  if (s === 2) return '已完成'
   return '未知'
 }
 
 const statusClass = (status) => {
   const s = Number(status)
   if (s === 0) return 'pending'
-  if (s === 1) return 'done'
+  if (s === 1) return 'confirming'
+  if (s === 2) return 'done'
   return 'unknown'
 }
+
+// =========================
+// 角色判定：当前用户是这单的买家还是卖家
+// 真正的越权拦截在后端 OrderService，这里只决定按钮怎么显示
+// =========================
+
+const isBuyerOrder = (order) => !!order && Number(order.buyerId) === currentUserId
+const isSellerOrder = (order) => !!order && Number(order.sellerId) === currentUserId
+
+/**
+ * 按“当前用户角色 + 订单状态”计算卡片/详情应展示的动作
+ * 返回 { kind, text? }：
+ *   deliver 卖家可“确认已交付”（status=0）
+ *   confirm 买家可“确认收货”（status=1）
+ *   wait    等待态（买家等卖家交付 / 卖家等买家确认）
+ *   done    已完成
+ */
+const cardAction = (order) => {
+  if (!order) return { kind: 'none' }
+
+  const s = Number(order.orderStatus)
+
+  if (s === 2) return { kind: 'done' }
+
+  if (s === 0) {
+    return isSellerOrder(order)
+        ? { kind: 'deliver' }
+        : { kind: 'wait', text: '等待卖家交付' }
+  }
+
+  if (s === 1) {
+    return isBuyerOrder(order)
+        ? { kind: 'confirm' }
+        : { kind: 'wait', text: '等待买家确认' }
+  }
+
+  return { kind: 'none' }
+}
+
+// =========================
+// 详情 Drawer 时间线
+// 面交模型：下单 → 卖家交付 → 买家确认 → 完成
+// 只有 create_time 是真实时间，其余节点仅显示业务状态
+// =========================
+
+const detailTimeline = computed(() => {
+  if (!detailOrder.value) return []
+
+  const s = Number(detailOrder.value.orderStatus)
+  const createTimeText = formatDateTime(detailOrder.value.createTime)
+
+  const steps = [
+    { title: '下单成功', state: 'done', desc: createTimeText }
+  ]
+
+  if (s === 0) {
+    steps.push({
+      title: '等待卖家交付',
+      state: 'current',
+      desc: '卖家将在线下面交时交付商品'
+    })
+  } else {
+    steps.push({ title: '卖家已交付', state: 'done', desc: '商品已线下交付' })
+
+    if (s === 1) {
+      steps.push({
+        title: '等待买家确认',
+        state: 'current',
+        desc: '等待买家确认收货'
+      })
+    } else {
+      steps.push({ title: '买家确认收货', state: 'done', desc: '买家已确认收到商品' })
+      steps.push({ title: '交易完成', state: 'done', desc: '本次交易已结束' })
+    }
+  }
+
+  return steps
+})
 
 // =========================
 // 对方信息
@@ -466,22 +606,22 @@ const goGoods = (goodsId) => {
 }
 
 // =========================
-// 确认完成：PUT /orders/{id}/status { orderStatus: 1 }
-// 后端 finishOrder 校验：订单存在 + 当前用户是买家或卖家 + 状态必须是待交易(0)
+// 卖家确认已交付：PUT /orders/{id}/status { orderStatus: 1 }
+// 后端状态机校验：当前用户 == sellerId 且 当前状态 == 0，否则拒绝
 // =========================
 
-const handleFinish = async (order) => {
+const handleSellerDeliver = async (order) => {
   try {
     await ElMessageBox.confirm(
-      `确认订单「${order.goodsName || '#' + order.orderId}」已经线下交易完成吗？完成后不可撤销。`,
-      '确认交易完成',
-      { confirmButtonText: '确认完成', cancelButtonText: '取消', type: 'warning' }
+      `确认已将「${order.goodsName || '#' + order.orderId}」线下交付给买家吗？交付后将等待买家确认收货。`,
+      '确认已交付',
+      { confirmButtonText: '确认已交付', cancelButtonText: '再等等', type: 'info' }
     )
   } catch (action) {
     return
   }
 
-  finishingId.value = order.orderId
+  actingId.value = order.orderId
 
   try {
     const result = await request.put(
@@ -489,11 +629,54 @@ const handleFinish = async (order) => {
       { orderStatus: 1 }
     )
 
-    if (result === '订单已完成') {
-      ElMessage.success('订单已完成')
+    if (result === '已确认交付，等待买家确认收货') {
+      ElMessage.success(result)
       await reload()
-      if (detailVisible.value && detailOrder.value?.orderId === order.orderId) {
-        detailVisible.value = false
+      // 详情 Drawer 不关闭，让卖家立刻看到“等待买家确认”的新时间线
+      if (detailOrder.value && detailOrder.value.orderId === order.orderId) {
+        detailOrder.value = orders.value.find(o => o.orderId === order.orderId) || detailOrder.value
+      }
+    } else {
+      // 后端状态机拒绝（越权 / 状态已被改变等），刷新以服务端真实状态为准
+      ElMessage.error(result || '操作失败')
+      await loadOrders()
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    actingId.value = null
+  }
+}
+
+// =========================
+// 买家确认收货：PUT /orders/{id}/status { orderStatus: 2 }
+// 后端状态机校验：当前用户 == buyerId 且 当前状态 == 1，否则拒绝
+// =========================
+
+const handleBuyerConfirm = async (order) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认已经收到「${order.goodsName || '#' + order.orderId}」并完成交易吗？确认后不可撤销。`,
+      '确认收货',
+      { confirmButtonText: '确认收到商品并完成交易', cancelButtonText: '再检查一下', type: 'warning' }
+    )
+  } catch (action) {
+    return
+  }
+
+  actingId.value = order.orderId
+
+  try {
+    const result = await request.put(
+      `/orders/${order.orderId}/status`,
+      { orderStatus: 2 }
+    )
+
+    if (result === '交易已完成') {
+      ElMessage.success('交易已完成')
+      await reload()
+      if (detailOrder.value && detailOrder.value.orderId === order.orderId) {
+        detailOrder.value = orders.value.find(o => o.orderId === order.orderId) || detailOrder.value
       }
     } else {
       ElMessage.error(result || '操作失败')
@@ -502,7 +685,7 @@ const handleFinish = async (order) => {
   } catch (error) {
     // request.js 已统一提示
   } finally {
-    finishingId.value = null
+    actingId.value = null
   }
 }
 
@@ -521,13 +704,23 @@ const openDetail = (order) => {
 
 const emptyTitle = computed(() => {
   if (statusFilter.value === 'pending') return '当前没有待交易的订单'
+  if (statusFilter.value === 'confirming') return '没有待确认的订单'
   if (statusFilter.value === 'done') return '还没有完成的订单'
   return activeTab.value === 'buyer' ? '还没有买过东西' : '还没有产生交易'
 })
 
 const emptyDesc = computed(() => {
-  if (statusFilter.value === 'pending') return '待交易订单会在这里等你确认'
-  if (statusFilter.value === 'done') return '完成的订单会留作记录'
+  if (statusFilter.value === 'pending') {
+    return activeTab.value === 'buyer'
+        ? '下单后在这里等待卖家线下交付'
+        : '买家下单后，在这里确认商品已交付'
+  }
+  if (statusFilter.value === 'confirming') {
+    return activeTab.value === 'buyer'
+        ? '卖家交付后，在这里确认收货即可完成交易'
+        : '交付后等待买家确认收货即可'
+  }
+  if (statusFilter.value === 'done') return '完成的订单会留作交易记录'
   return activeTab.value === 'buyer'
     ? '去校园市场看看，也许下一件宝贝正在等你。'
     : '发布一件商品，开始你的第一笔校园交易。'
@@ -847,6 +1040,12 @@ onMounted(() => {
   color: #fff;
 }
 
+/* 待买家确认：莫兰迪灰蓝，区别于待交易的暖黄与已完成的灰绿 */
+.status-badge--confirming {
+  background: rgba(122, 158, 168, 0.88);
+  color: #fff;
+}
+
 .status-badge--done {
   background: rgba(143, 174, 108, 0.82);
   color: #fff;
@@ -953,6 +1152,23 @@ onMounted(() => {
 }
 
 .order-card__done .el-icon {
+  font-size: 15px;
+}
+
+/* 等待态：等待卖家交付 / 等待买家确认（灰蓝中性提示，不可点击） */
+.order-card__wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #7a9ea8;
+  background: rgba(122, 158, 168, 0.1);
+  border-radius: 8px;
+}
+
+.order-card__wait .el-icon {
   font-size: 15px;
 }
 
@@ -1168,6 +1384,12 @@ onMounted(() => {
   box-shadow: 0 0 0 2px #d8a8ad;
 }
 
+/* 当前进行中的节点：莫兰迪灰蓝描边 + 浅色实心，提示“正在等这一步” */
+.timeline__item--current .timeline__dot {
+  background: #7a9ea8;
+  box-shadow: 0 0 0 2px rgba(122, 158, 168, 0.35);
+}
+
 .timeline__content {
   display: flex;
   flex-direction: column;
@@ -1184,6 +1406,10 @@ onMounted(() => {
   color: #4a4548;
 }
 
+.timeline__item--current .timeline__title {
+  color: #5d7d87;
+}
+
 .timeline__time {
   font-size: 12px;
   color: #9a8e88;
@@ -1193,13 +1419,34 @@ onMounted(() => {
   width: 2px;
   height: 18px;
   margin-left: 5px;
-  background: linear-gradient(to bottom, #d8a8ad, #e8ddd0);
+  background: #e8ddd0;
+}
+
+.timeline__line--done {
+  background: linear-gradient(to bottom, #d8a8ad, #d8a8ad);
 }
 
 .detail-footer {
   display: flex;
   justify-content: center;
   padding: 16px 24px 24px;
+}
+
+.detail-footer__wait,
+.detail-footer__done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.detail-footer__wait {
+  color: #5d7d87;
+}
+
+.detail-footer__done {
+  color: #8fae6c;
 }
 
 /* ========== 响应式 ========== */

@@ -183,7 +183,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="110">
           <template #default="scope">
             <el-tag
                 v-if="scope.row.orderStatus === 0"
@@ -194,6 +194,13 @@
             </el-tag>
             <el-tag
                 v-else-if="scope.row.orderStatus === 1"
+                type="info"
+                size="small"
+            >
+              待买家确认
+            </el-tag>
+            <el-tag
+                v-else-if="scope.row.orderStatus === 2"
                 type="success"
                 size="small"
             >
@@ -209,18 +216,22 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="130" fixed="right">
           <template #default="scope">
+            <!-- 待交易：卖家确认已交付（0→1） -->
             <el-button
                 v-if="scope.row.orderStatus === 0"
-                type="success"
+                type="primary"
                 link
                 :loading="finishingId === scope.row.orderId"
-                @click="handleFinish(scope.row)"
+                @click="handleDeliver(scope.row)"
             >
-              确认完成
+              确认已交付
             </el-button>
-            <span v-else class="order-done-text">交易已结束</span>
+            <!-- 待买家确认：卖家无需再操作，等待买家确认收货 -->
+            <span v-else-if="scope.row.orderStatus === 1" class="order-wait-text">等待买家确认</span>
+            <!-- 已完成 -->
+            <span v-else-if="scope.row.orderStatus === 2" class="order-done-text">交易已完成</span>
           </template>
         </el-table-column>
 
@@ -319,8 +330,10 @@ const onSaleCount = computed(() => {
   return myGoods.value.filter(goods => goods.status === 1).length
 })
 
+// 已完成订单：状态 2（买家已确认收货）
+// 注意状态 1 是“待买家确认”，尚未真正成交，不计入完成数与成交金额
 const completedOrders = computed(() => {
-  return sellerOrders.value.filter(order => order.orderStatus === 1)
+  return sellerOrders.value.filter(order => Number(order.orderStatus) === 2)
 })
 
 const completedCount = computed(() => completedOrders.value.length)
@@ -486,18 +499,19 @@ const handleDelete = async (goods) => {
 
 
 // =========================
-// 确认订单完成：待交易 → 已完成
+// 卖家确认已交付：待交易(0) → 待买家确认(1)
+// 买家收到后由买家在交易中心确认收货(1→2)，卖家不能直接完成订单
 // =========================
 
-const handleFinish = async (order) => {
+const handleDeliver = async (order) => {
   try {
     await ElMessageBox.confirm(
-        `确认订单「${order.goodsName || '#' + order.orderId}」已经线下交易完成吗？完成后不可撤销。`,
-        '确认交易完成',
+        `确认已将「${order.goodsName || '#' + order.orderId}」线下交付给买家吗？交付后将等待买家确认收货。`,
+        '确认已交付',
         {
-          confirmButtonText: '确认完成',
-          cancelButtonText: '取消',
-          type: 'warning'
+          confirmButtonText: '确认已交付',
+          cancelButtonText: '再等等',
+          type: 'info'
         }
     )
   } catch (action) {
@@ -512,10 +526,11 @@ const handleFinish = async (order) => {
         { orderStatus: 1 }
     )
 
-    if (result === '订单已完成') {
+    if (result === '已确认交付，等待买家确认收货') {
       ElMessage.success(result)
       order.orderStatus = 1
     } else {
+      // 后端状态机拒绝（越权 / 状态已改变等），重新拉取真实数据
       ElMessage.error(result || '操作失败')
       loadExtras()
     }
@@ -599,6 +614,12 @@ onMounted(() => {
 .order-done-text {
   font-size: 13px;
   color: var(--brand-text-secondary);
+}
+
+/* 待买家确认：卖家无需操作的等待态，灰蓝中性提示 */
+.order-wait-text {
+  font-size: 13px;
+  color: #5d7d87;
 }
 
 /* 小屏统计卡降为两列 */

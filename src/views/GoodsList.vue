@@ -119,10 +119,13 @@
             class="filter-bar__campus"
             @change="handleSearch"
         >
-          <el-option label="东区" value="东区" />
-          <el-option label="西区" value="西区" />
-          <el-option label="南区" value="南区" />
-          <el-option label="北区" value="北区" />
+          <!-- 校区来自数据库真实在售数据（/home/overview），不硬编码 -->
+          <el-option
+              v-for="c in campuses"
+              :key="c"
+              :label="c"
+              :value="c"
+          />
         </el-select>
 
         <el-select
@@ -538,6 +541,9 @@ const sortBy = ref('latest')
 const activeScene = ref(null)
 
 const categories = ref([])
+// 校区筛选项：来自 /home/overview 的真实在售校区（数据库 DISTINCT campus），
+// 不硬编码任何校区名；当前只有北区时下拉就只有北区
+const campuses = ref([])
 const goodsList = ref([])
 
 const pageNum = ref(1)
@@ -628,6 +634,17 @@ const loadCategories = async () => {
   } catch (error) {
     // 分类加载失败不阻塞商品浏览，下拉为空时仍可按名称查询
     console.error('加载分类失败：', error)
+  }
+}
+
+// 加载真实校区列表（与首页、发布页共用 /home/overview，保证全站校区口径一致）
+const loadCampuses = async () => {
+  try {
+    const res = await request.get('/home/overview')
+    campuses.value = Array.isArray(res?.campuses) ? res.campuses : []
+  } catch (error) {
+    // 校区加载失败不阻塞浏览，下拉为空时仍可按其它条件查询
+    campuses.value = []
   }
 }
 
@@ -1255,6 +1272,7 @@ onMounted(async () => {
       applySnapshot(snap)
       // 分类字典仍需加载（快捷入口/分类名映射依赖），与商品请求并行
       loadCategories()
+      loadCampuses()
       await loadGoods()
       restoreScroll(snap.scrollTop || 0)
       return
@@ -1264,6 +1282,7 @@ onMounted(async () => {
   // 正常进入：先还原首页/场景卡片带来的路由筛选状态，再加载
   applyRouteQuery()
   loadCategories()
+  loadCampuses()
   loadGoods()
 })
 </script>
