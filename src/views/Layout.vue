@@ -117,7 +117,8 @@ import {
   ArrowDown,
   RefreshRight,
   Promotion,
-  CirclePlus
+  CirclePlus,
+  MagicStick
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -187,6 +188,13 @@ const menus = [
     icon: ShoppingBag
   },
   {
+    // AI 助手：页面与基础问答对游客同样开放，游客菜单也会展示
+    name: 'AI 助手',
+    path: '/ai-assistant',
+    roles: ['student', 'seller', 'admin'],
+    icon: MagicStick
+  },
+  {
     name: '交易中心',
     path: '/orders',
     roles: ['student', 'seller', 'admin'],
@@ -221,9 +229,12 @@ const menus = [
 
 // 按角色过滤菜单
 const visibleMenus = computed(() => {
-  // 游客只显示"市场"一项，其他业务菜单需登录后才能使用
+  // 游客显示"市场"与"AI 助手"两个公开页面，其他业务菜单需登录后才能使用
   if (!isLoggedIn.value) {
-    return [{ name: '市场', path: '/goods', icon: ShoppingBag }]
+    return [
+      { name: '市场', path: '/goods', icon: ShoppingBag },
+      { name: 'AI 助手', path: '/ai-assistant', icon: MagicStick }
+    ]
   }
   return menus.filter(menu => menu.roles.includes(role.value))
 })

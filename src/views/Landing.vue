@@ -386,8 +386,8 @@
           </div>
 
           <div class="ai__hint">
-            <span class="ai__soon">即将上线</span>
-            AI 能力正在接入中，登录后可第一时间体验
+            <span class="ai__soon">基础版已上线</span>
+            点击上方问题即可进入 AI 助手，无需登录也能体验基础问答
           </div>
         </div>
 
@@ -512,8 +512,8 @@ const goRegister = () => router.push('/register')
 // 逛市场：游客可直接进入商品市场浏览，无需登录
 // 已登录用户也进 /goods（市场是公开的，/home 是登录后的个人工作台）
 const goMarket = () => router.push('/goods')
-// AI 需要登录态：未登录先进登录流程，已登录进入正式 AI 页面
-const goAi = () => router.push(isLogin ? '/ai-assistant' : '/login')
+// AI 助手页面与基础问答对游客公开，所有人均可直接进入体验
+const goAi = () => router.push('/ai-assistant')
 // 真实商品卡：游客可直达商品详情，受限操作在详情页内部门禁
 const goGoods = (id) => router.push(`/goods/${id}`)
 // 场景卡：复用 GoodsList.applyRouteQuery 的 /goods?scene=<key>，游客同样可进入

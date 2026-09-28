@@ -83,12 +83,12 @@ const router = createRouter({
           }
         },
         {
+          // AI 助手：游客可进入页面并使用基础问答，登录态用于未来保存个人会话
           path: 'ai-assistant',
           component: () => import('../views/AiAssistant.vue'),
           meta: {
-            title: 'AI 校园闲置助手',
-            requireAuth: true,
-            roles: ['student', 'seller', 'admin']
+            title: '校园 AI 助手',
+            public: true
           }
         },
         {

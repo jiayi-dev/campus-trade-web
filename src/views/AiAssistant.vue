@@ -1,489 +1,1138 @@
 <template>
   <!--
-    AI 校园闲置助手 · 正式业务页面架构
-    本批交付：独立页面骨架 + 能力规划 + 诚实"即将上线"状态。
-    Agent 引擎（LLM → Tool Calling → 业务工具 → 数据库 → SSE 流式回答）
-    将在独立批次中接入，本页不伪造任何对话功能。
+    校园 AI 助手 · 完整可演示成品（当前后端为 Mock 规则问答，可整体替换为真实 LLM）
+    调用链：本页 → POST /api/ai/chat → AiController → AiService → { reply, suggestions }
+    会话仅保存在当前浏览器内存，刷新即清空；不做数据库持久化
   -->
   <div class="ai-page">
-    <div class="ai-layout">
 
-      <!-- 左侧会话栏 -->
-      <aside class="ai-sidebar">
-        <button class="ai-new-chat" disabled title="AI 助手上线后开放">
-          <el-icon><Plus /></el-icon>新建会话
-        </button>
+    <!-- ============ Hero ============ -->
+    <section class="ai-hero">
+      <div class="ai-hero__glow ai-hero__glow--pink"></div>
+      <div class="ai-hero__glow ai-hero__glow--butter"></div>
+      <div class="ai-hero__glow ai-hero__glow--mist"></div>
 
-        <div class="ai-sidebar__section">
-          <div class="ai-sidebar__label">历史会话</div>
-          <div class="ai-sidebar__empty">
-            <el-icon class="ai-sidebar__empty-icon"><ChatDotSquare /></el-icon>
-            <p>暂无历史会话</p>
-            <span>AI 助手上线后，你的每一次咨询都会保留在这里</span>
-          </div>
+      <div class="ai-hero__main">
+        <div class="ai-hero__avatar">
+          <el-icon><MagicStick /></el-icon>
         </div>
-
-        <div class="ai-sidebar__footer">Agent 引擎接入中</div>
-      </aside>
-
-      <!-- 主区域 -->
-      <main class="ai-main">
-        <!-- 助手身份区 -->
-        <div class="ai-hero">
-          <div class="ai-hero__avatar">
-            <el-icon><MagicStick /></el-icon>
-          </div>
-          <div class="ai-hero__meta">
-            <div class="ai-hero__name">
-              AI 校园闲置助手
-              <span class="ai-hero__badge">即将上线</span>
-            </div>
-            <div class="ai-hero__slogan">
-              用自然语言，找到校园里最适合你的闲置好物
-            </div>
-          </div>
+        <div class="ai-hero__text">
+          <h1 class="ai-hero__title">你的校园交易智能伙伴</h1>
+          <p class="ai-hero__subtitle">
+            帮你寻找好物、解答交易问题，让校园闲置流转更简单。
+          </p>
         </div>
+      </div>
 
-        <!-- 状态说明 -->
-        <div class="ai-notice">
-          <el-icon><InfoFilled /></el-icon>
-          <div>
-            <div class="ai-notice__title">Agent 引擎接入中，对话功能暂未开放</div>
-            <div class="ai-notice__desc">
-              技术路线：自然语言理解 → LLM → Tool Calling → 商品 / 订单 / 收藏等业务工具
-              → 数据库 → SSE 流式回答。以下为正式上线后的能力预览。
-            </div>
+      <!-- UI 状态：仅表示前端助手在线，不代表已接入任何真实大模型 -->
+      <div class="ai-hero__status">
+        <span class="ai-hero__dot"></span>
+        AI Assistant Online
+      </div>
+    </section>
+
+    <!-- ============ 主体：左能力 / 右对话 ============ -->
+    <div class="ai-grid">
+
+      <!-- 左侧 -->
+      <aside class="ai-side">
+
+        <!-- 快捷问题 -->
+        <div class="side-card">
+          <div class="side-card__title">
+            <el-icon><ChatLineSquare /></el-icon>
+            快捷问题
           </div>
-        </div>
-
-        <!-- 能力规划卡片 -->
-        <div class="ai-caps">
-          <div v-for="cap in capabilities" :key="cap.title" class="ai-cap">
-            <div class="ai-cap__icon" :style="{ background: cap.bg }">
-              <el-icon><component :is="cap.icon" /></el-icon>
-            </div>
-            <div class="ai-cap__title">{{ cap.title }}</div>
-            <div class="ai-cap__desc">{{ cap.desc }}</div>
-            <span class="ai-cap__tag">规划中</span>
-          </div>
-        </div>
-
-        <!-- 推荐问题预览 -->
-        <div class="ai-suggest">
-          <div class="ai-suggest__title">上线后你可以这样问</div>
-          <div class="ai-suggest__chips">
-            <button
-              v-for="q in examples"
-              :key="q"
-              class="ai-suggest__chip"
-              @click="handleExample"
-            >{{ q }}</button>
-          </div>
-        </div>
-
-        <!-- 输入区（未开放，禁用态） -->
-        <div class="ai-input is-disabled">
-          <el-icon class="ai-input__icon"><ChatLineSquare /></el-icon>
-          <input
-            disabled
-            placeholder="AI Agent 引擎接入中，即将开放对话…"
-          />
-          <button class="ai-input__send" disabled>
-            <el-icon><Promotion /></el-icon>
+          <button
+            v-for="q in quickQuestions"
+            :key="q"
+            class="quick-q"
+            :disabled="sending"
+            @click="sendMessage(q)"
+          >
+            <span>{{ q }}</span>
+            <el-icon class="quick-q__arrow"><ArrowRight /></el-icon>
           </button>
         </div>
-      </main>
 
+        <!-- 能力卡片 -->
+        <div class="side-card">
+          <div class="side-card__title">
+            <el-icon><Menu /></el-icon>
+            AI 能力
+            <span class="side-card__tag">能力预览</span>
+          </div>
+          <div
+            v-for="cap in capabilities"
+            :key="cap.no"
+            class="cap-item"
+          >
+            <div class="cap-item__icon" :style="{ background: cap.bg }">
+              <el-icon><component :is="cap.icon" /></el-icon>
+            </div>
+            <div class="cap-item__body">
+              <div class="cap-item__name">
+                <span class="cap-item__no">{{ cap.no }}</span>{{ cap.name }}
+              </div>
+              <div class="cap-item__desc">{{ cap.desc }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 游客提示：非阻断，基础问答仍可使用 -->
+        <div v-if="!isLoggedIn" class="side-card guest-card">
+          <el-icon class="guest-card__icon"><UserFilled /></el-icon>
+          <div class="guest-card__text">
+            <div class="guest-card__title">游客体验中</div>
+            <div class="guest-card__desc">登录后可以保存你的 AI 对话记录</div>
+          </div>
+          <router-link
+            class="guest-card__btn"
+            :to="{ path: '/login', query: { redirect: route.fullPath } }"
+          >去登录</router-link>
+        </div>
+      </aside>
+
+      <!-- 右侧：对话区 -->
+      <section class="chat-panel">
+
+        <header class="chat-panel__header">
+          <div class="chat-panel__avatar">
+            <el-icon><ChatDotRound /></el-icon>
+          </div>
+          <div class="chat-panel__meta">
+            <div class="chat-panel__name">校园交易助手</div>
+            <div class="chat-panel__state">
+              <span class="chat-panel__state-dot"></span>
+              {{ sending ? '正在输入…' : '在线，随时可以提问' }}
+            </div>
+          </div>
+          <button
+            class="chat-panel__clear"
+            title="清空当前会话"
+            :disabled="sending || messages.length <= 1"
+            @click="clearConversation"
+          >
+            <el-icon><RefreshLeft /></el-icon>
+            清空
+          </button>
+        </header>
+
+        <!-- 消息流 -->
+        <div ref="scrollRef" class="chat-messages">
+
+          <div
+            v-for="msg in messages"
+            :key="msg.id"
+            class="msg-row"
+            :class="msg.role === 'user' ? 'msg-row--user' : 'msg-row--ai'"
+          >
+            <!-- AI 头像 -->
+            <div v-if="msg.role === 'ai'" class="msg-avatar msg-avatar--ai">
+              <el-icon><MagicStick /></el-icon>
+            </div>
+
+            <div class="msg-bubble-col">
+              <div class="msg-meta">{{ formatTime(msg.time) }}</div>
+
+              <!-- 正常文本气泡 -->
+              <div
+                v-if="msg.status !== 'error'"
+                class="msg-bubble"
+                :class="msg.role === 'user' ? 'msg-bubble--user' : 'msg-bubble--ai'"
+              >
+                <span class="msg-text">{{ msg.text }}</span>
+              </div>
+
+              <!-- 失败气泡：可重新发送 -->
+              <div v-else class="msg-bubble msg-bubble--error">
+                <el-icon class="msg-bubble__warn"><WarningFilled /></el-icon>
+                <div class="msg-error__body">
+                  <span>AI 暂时没有回应，请稍后再试。</span>
+                  <button class="msg-retry" @click="retry(msg.retryText)">
+                    <el-icon><RefreshRight /></el-icon>重新发送
+                  </button>
+                </div>
+              </div>
+
+              <!-- AI 追问建议 -->
+              <div
+                v-if="msg.role === 'ai' && msg.status !== 'error' && msg.suggestions && msg.suggestions.length"
+                class="msg-suggest"
+              >
+                <button
+                  v-for="s in msg.suggestions"
+                  :key="s"
+                  class="msg-suggest__chip"
+                  :disabled="sending"
+                  @click="sendMessage(s)"
+                >{{ s }}</button>
+              </div>
+            </div>
+
+            <!-- 用户头像 -->
+            <div v-if="msg.role === 'user'" class="msg-avatar msg-avatar--user">
+              {{ userInitial }}
+            </div>
+          </div>
+
+          <!-- AI 思考状态 -->
+          <div v-if="sending" class="msg-row msg-row--ai think-row">
+            <div class="msg-avatar msg-avatar--ai">
+              <el-icon><MagicStick /></el-icon>
+            </div>
+            <div class="msg-bubble-col">
+              <div class="msg-meta">AI 正在整理答案…</div>
+              <div class="msg-bubble msg-bubble--ai think-bubble">
+                <span class="think-dot"></span>
+                <span class="think-dot"></span>
+                <span class="think-dot"></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 输入区 -->
+        <footer class="chat-input">
+          <el-input
+            ref="inputRef"
+            v-model="draft"
+            type="textarea"
+            :autosize="{ minRows: 1, maxRows: 4 }"
+            maxlength="500"
+            resize="none"
+            placeholder="问问商品、发布、购买或交易流程…（Enter 发送，Shift + Enter 换行）"
+            class="chat-input__field"
+            @keydown="onKeydown"
+          />
+          <el-button
+            type="primary"
+            class="chat-input__send"
+            :loading="sending"
+            :disabled="!canSend"
+            @click="onSendClick"
+          >
+            <el-icon v-if="!sending"><Promotion /></el-icon>
+            {{ sending ? '思考中…' : '发送' }}
+          </el-button>
+        </footer>
+
+      </section>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
-  Plus, ChatDotSquare, ChatLineSquare, MagicStick, InfoFilled,
-  Promotion, Search, Star, Tickets, EditPen
+  MagicStick, ChatLineSquare, ChatDotRound, ArrowRight, Promotion,
+  Menu, Star, Search, Tickets, UserFilled, WarningFilled,
+  RefreshRight, RefreshLeft
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import request from '../utils/request'
 
-// 能力规划：正式上线后的四大 Agent 场景（本批仅展示架构，不伪造功能）
+const route = useRoute()
+
+// =========================
+// 会话状态：仅内存，刷新清空
+// =========================
+
+const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+const userInitial = computed(() => {
+  const name = localStorage.getItem('username') || ''
+  return name ? name.charAt(0).toUpperCase() : '我'
+})
+
+// 为未来多轮对话预留：前端生成会话标识，当前后端不持久化
+const conversationId = 'ai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10)
+
+let seq = 0
+const nextId = () => ++seq
+
+const welcomeMessage = {
+  id: nextId(),
+  role: 'ai',
+  text: '你好，我是校园交易助手。\n你可以问我商品、交易、发布等问题，也可以点击左侧的快捷问题直接开始。',
+  time: new Date(),
+  status: 'ok',
+  suggestions: ['推荐适合我的商品', '怎么发布商品？', '交易流程是什么？']
+}
+
+const messages = ref([welcomeMessage])
+const draft = ref('')
+const sending = ref(false)
+const scrollRef = ref(null)
+const inputRef = ref(null)
+
+const canSend = computed(() => draft.value.trim().length > 0 && !sending.value)
+
+// =========================
+// 静态内容
+// =========================
+
+const quickQuestions = [
+  '推荐适合我的商品',
+  '附近有什么好物？',
+  '怎么发布商品？',
+  '交易流程是什么？'
+]
+
+// 三个能力均为“能力预览”，诚实标注当前是基础版助手
 const capabilities = [
   {
-    title: '自然语言搜商品',
-    desc: '“帮我找 300 元以内的显示器”，Agent 自动调用商品搜索工具并整理结果',
+    no: '01',
+    name: '智能推荐',
+    desc: '根据你的需求寻找校园好物',
+    icon: Star,
+    bg: 'linear-gradient(135deg,#f6e7b4,#f1dd9e)'
+  },
+  {
+    no: '02',
+    name: '商品问答',
+    desc: '快速了解商品和交易信息',
     icon: Search,
     bg: 'linear-gradient(135deg,#f7e1e3,#f4d5d8)'
   },
   {
-    title: '智能好物推荐',
-    desc: '结合你的浏览与收藏，调用商品数据生成个性化推荐与理由',
-    icon: Star,
-    bg: 'linear-gradient(135deg,#f3e6d4,#ead9a0)'
-  },
-  {
-    title: '我的订单问答',
-    desc: '“我最近有哪些待完成订单？”直接查询你的真实订单数据并回答',
+    no: '03',
+    name: '交易助手',
+    desc: '帮你理解发布、购买和交易流程',
     icon: Tickets,
-    bg: 'linear-gradient(135deg,#f5e7a8,#ead9a0)'
-  },
-  {
-    title: '卖家文案助手',
-    desc: '一句话描述闲置，Agent 帮你生成商品标题、描述、成色与分类建议',
-    icon: EditPen,
-    bg: 'linear-gradient(135deg,#dde3e8,#ece3dc)'
+    bg: 'linear-gradient(135deg,#dbe3e8,#c9d5dc)'
   }
 ]
 
-// 推荐问题预览（点击仅提示即将上线，不伪造对话）
-const examples = [
-  '帮我找 300 元以内的显示器',
-  '有没有适合宿舍用的小桌子？',
-  '帮我看看最近有什么数码好物',
-  '我想找九成新的教材'
-]
+// =========================
+// 对话逻辑
+// =========================
 
-const handleExample = () => {
-  ElMessage.info('AI 助手即将上线，敬请期待')
+const scrollToBottom = () => {
+  nextTick(() => {
+    const el = scrollRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
 }
+
+const focusInput = () => {
+  nextTick(() => {
+    // el-input 暴露 focus 方法
+    inputRef.value?.focus?.()
+  })
+}
+
+watch(messages, scrollToBottom, { deep: true })
+watch(sending, scrollToBottom)
+
+/**
+ * 发送一条消息
+ * @param {string} rawText 消息内容（快捷问题/追问/输入框/重发共用同一入口）
+ */
+const sendMessage = async (rawText) => {
+  const text = (rawText ?? draft.value).trim()
+
+  // 空消息禁止发送
+  if (!text || sending.value) return
+
+  // 来自输入框时清空草稿；来自快捷问题/重发不影响草稿
+  if (draft.value.trim() === text) {
+    draft.value = ''
+  }
+
+  messages.value.push({
+    id: nextId(),
+    role: 'user',
+    text,
+    time: new Date(),
+    status: 'ok'
+  })
+
+  sending.value = true
+
+  // 思考动画的最短展示时间：避免本地 Mock 瞬间返回，让交互过程可感知
+  const minThinking = new Promise(resolve => setTimeout(resolve, 650))
+
+  try {
+    const apiCall = request.post('/ai/chat', {
+      message: text,
+      conversationId
+    })
+
+    const [result] = await Promise.all([apiCall, minThinking])
+
+    // 契约防御：即使后端结构异常也按失败处理，不渲染空白气泡
+    if (!result || typeof result.reply !== 'string' || !result.reply.trim()) {
+      pushError(text)
+    } else {
+      messages.value.push({
+        id: nextId(),
+        role: 'ai',
+        text: result.reply,
+        time: new Date(),
+        status: 'ok',
+        suggestions: Array.isArray(result.suggestions) ? result.suggestions : []
+      })
+    }
+  } catch (error) {
+    // request.js 已统一 toast；消息流内再给出可“重新发送”的错误气泡
+    await minThinking
+    pushError(text)
+  } finally {
+    sending.value = false
+    focusInput()
+  }
+}
+
+const pushError = (retryText) => {
+  messages.value.push({
+    id: nextId(),
+    role: 'ai',
+    text: '',
+    time: new Date(),
+    status: 'error',
+    retryText
+  })
+}
+
+// 失败重发：移除错误气泡后用原问题重新请求
+const retry = (retryText) => {
+  if (!retryText || sending.value) return
+  const last = messages.value[messages.value.length - 1]
+  if (last && last.status === 'error') {
+    messages.value.pop()
+  }
+  sendMessage(retryText)
+}
+
+const onSendClick = () => sendMessage()
+
+// Enter 发送 / Shift+Enter 换行；中文输入法组词期间不拦截
+const onKeydown = (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault()
+    sendMessage()
+  }
+}
+
+const clearConversation = () => {
+  if (sending.value || messages.value.length <= 1) return
+  messages.value = [{
+    ...welcomeMessage,
+    id: nextId(),
+    time: new Date()
+  }]
+  focusInput()
+}
+
+const formatTime = (date) => {
+  const d = date instanceof Date ? date : new Date(date)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+onMounted(() => {
+  focusInput()
+})
 </script>
 
 <style scoped>
-/* 页面私有奶油色系，与首页保持一致 */
+/* ============================================================
+   校园 AI 助手：奶油白 + 淡粉 + 淡黄 + 少量灰蓝，无紫色/高饱和霓虹
+   ============================================================ */
+
 .ai-page {
-  --ai-primary: #e8b4b8;
-  --ai-primary-hover: #dca0a4;
-  --ai-primary-soft: #f4d5d8;
-  --ai-accent: #d8b658;
-  --ai-text: #4a4548;
-  --ai-text-soft: #8a7f80;
-  --ai-border: #ece3dc;
-
-  height: calc(100vh - 62px - 48px);
-  min-height: 520px;
-}
-
-.ai-layout {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 20px;
-  height: 100%;
-  max-width: 1240px;
+  max-width: 1200px;
   margin: 0 auto;
-}
-
-/* ========== 左侧会话栏 ========== */
-.ai-sidebar {
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  border-radius: 20px;
-  box-shadow: 0 4px 16px rgba(74, 69, 72, 0.05);
-  padding: 16px;
-  overflow: hidden;
-}
-
-.ai-new-chat {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 11px 0;
-  border: none;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--ai-primary), var(--ai-primary-hover));
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: not-allowed;
-  opacity: 0.65;
-}
-
-.ai-sidebar__section {
-  flex: 1;
-  margin-top: 18px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.ai-sidebar__label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ai-text-soft);
-  letter-spacing: 1px;
-  margin-bottom: 10px;
-}
-
-.ai-sidebar__empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
-  padding: 20px 10px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #fbf6f0, #f7e1e3);
-  border: 1px dashed var(--ai-primary-soft);
-}
-
-.ai-sidebar__empty-icon {
-  font-size: 30px;
-  color: var(--ai-primary);
-  opacity: 0.7;
-}
-
-.ai-sidebar__empty p {
-  margin: 0;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ai-text);
-}
-
-.ai-sidebar__empty span {
-  font-size: 11.5px;
-  color: var(--ai-text-soft);
-  line-height: 1.6;
-}
-
-.ai-sidebar__footer {
-  margin-top: 14px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--ai-text-soft);
-  letter-spacing: 0.5px;
-}
-
-/* ========== 主区域 ========== */
-.ai-main {
-  background: #fff;
-  border-radius: 20px;
-  box-shadow: 0 4px 16px rgba(74, 69, 72, 0.05);
-  padding: 28px 30px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  overflow-y: auto;
 }
 
-/* 助手身份区 */
+/* ========== Hero ========== */
+
 .ai-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--brand-radius-xl);
+  padding: 30px 32px;
+  background:
+    linear-gradient(120deg, #fdf7f2 0%, #fbeef0 52%, #fbf5e4 100%);
+  border: 1px solid var(--brand-border);
+  box-shadow: var(--brand-shadow-sm);
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.ai-hero__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(34px);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: glowFloat 9s ease-in-out infinite;
+}
+
+.ai-hero__glow--pink {
+  width: 220px;
+  height: 220px;
+  right: 22%;
+  top: -120px;
+  background: rgba(232, 180, 184, 0.5);
+}
+
+.ai-hero__glow--butter {
+  width: 180px;
+  height: 180px;
+  right: -40px;
+  bottom: -110px;
+  background: rgba(232, 214, 150, 0.5);
+  animation-delay: -3s;
+}
+
+.ai-hero__glow--mist {
+  width: 150px;
+  height: 150px;
+  left: -50px;
+  bottom: -90px;
+  background: rgba(180, 198, 208, 0.45);
+  animation-delay: -6s;
+}
+
+@keyframes glowFloat {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(10px, 12px); }
+}
+
+.ai-hero__main {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  z-index: 1;
 }
 
 .ai-hero__avatar {
-  width: 62px;
-  height: 62px;
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
   border-radius: 18px;
-  background: linear-gradient(135deg, var(--ai-primary), var(--ai-primary-hover));
+  background: linear-gradient(135deg, #e8b4b8, #d8a8ad);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30px;
   color: #fff;
-  box-shadow: 0 10px 24px rgba(220, 160, 164, 0.35);
+  font-size: 30px;
+  box-shadow: 0 12px 26px rgba(216, 168, 173, 0.4);
 }
 
-.ai-hero__name {
-  font-size: 22px;
+.ai-hero__title {
+  margin: 0;
+  font-size: 25px;
   font-weight: 800;
-  color: var(--ai-text);
+  color: var(--brand-text);
+  letter-spacing: 0.5px;
+}
+
+.ai-hero__subtitle {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--brand-text-regular);
+}
+
+.ai-hero__status {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: #6b7f72;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(143, 174, 108, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.ai-hero__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9db98c;
+  box-shadow: 0 0 0 4px rgba(157, 185, 140, 0.2);
+  animation: pulseDot 2.2s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(157, 185, 140, 0.18); }
+  50% { box-shadow: 0 0 0 6px rgba(157, 185, 140, 0.06); }
+}
+
+/* ========== 左右布局 ========== */
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: 316px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.ai-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.side-card {
+  background: var(--brand-white);
+  border-radius: var(--brand-radius-lg);
+  border: 1px solid var(--brand-border);
+  box-shadow: var(--brand-shadow-sm);
+  padding: 18px;
+}
+
+.side-card__title {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.ai-hero__badge {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--ai-primary-hover);
-  background: var(--ai-primary-soft);
-  border-radius: 999px;
-  padding: 3px 12px;
-}
-
-.ai-hero__slogan {
-  margin-top: 6px;
-  font-size: 13.5px;
-  color: var(--ai-text-soft);
-}
-
-/* 状态说明 */
-.ai-notice {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px 18px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #fbf6f0, #f3e6d4);
-  border: 1px solid var(--ai-border);
-}
-
-.ai-notice .el-icon {
-  font-size: 20px;
-  color: var(--ai-accent);
-  margin-top: 2px;
-}
-
-.ai-notice__title {
+  gap: 7px;
   font-size: 14px;
   font-weight: 700;
-  color: var(--ai-text);
+  color: var(--brand-text);
+  margin-bottom: 14px;
 }
 
-.ai-notice__desc {
-  margin-top: 4px;
-  font-size: 12.5px;
-  color: var(--ai-text-soft);
-  line-height: 1.7;
+.side-card__title .el-icon {
+  color: var(--brand-primary);
+  font-size: 17px;
 }
 
-/* 能力卡片 */
-.ai-caps {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 14px;
-}
-
-.ai-cap {
-  position: relative;
-  padding: 18px;
-  border-radius: 16px;
-  background: #fbfaf8;
-  border: 1px solid var(--ai-border);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
-
-.ai-cap:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 26px rgba(74, 69, 72, 0.08);
-}
-
-.ai-cap__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  color: var(--ai-text);
-}
-
-.ai-cap__title {
-  margin-top: 12px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--ai-text);
-}
-
-.ai-cap__desc {
-  margin-top: 6px;
-  font-size: 12.5px;
-  color: var(--ai-text-soft);
-  line-height: 1.7;
-}
-
-.ai-cap__tag {
-  position: absolute;
-  top: 14px;
-  right: 14px;
+.side-card__tag {
+  margin-left: auto;
   font-size: 11px;
   font-weight: 600;
-  color: var(--ai-primary-hover);
-  background: var(--ai-primary-soft);
+  color: #b08a52;
+  background: var(--brand-accent-soft);
   border-radius: 999px;
   padding: 2px 10px;
 }
 
-/* 推荐问题 */
-.ai-suggest__title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ai-text);
-  margin-bottom: 10px;
-}
-
-.ai-suggest__chips {
+/* 快捷问题 */
+.quick-q {
+  width: 100%;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--brand-border);
+  background: #fdfaf7;
+  font-size: 13px;
+  color: var(--brand-text);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.22s ease;
 }
 
-.ai-suggest__chip {
-  border: 1px solid var(--ai-border);
-  background: #fbfaf8;
+.quick-q:last-child {
+  margin-bottom: 0;
+}
+
+.quick-q:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  background: #fff;
+  color: var(--brand-primary-active);
+  transform: translateX(3px);
+}
+
+.quick-q:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.quick-q__arrow {
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+  flex-shrink: 0;
+}
+
+.quick-q:hover:not(:disabled) .quick-q__arrow {
+  color: var(--brand-primary);
+}
+
+/* 能力卡片 */
+.cap-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 4px;
+}
+
+.cap-item + .cap-item {
+  border-top: 1px dashed var(--brand-border);
+}
+
+.cap-item__icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  color: var(--brand-text);
+}
+
+.cap-item__name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+.cap-item__no {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--brand-primary);
+  margin-right: 7px;
+  letter-spacing: 0.5px;
+}
+
+.cap-item__desc {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--brand-text-secondary);
+}
+
+/* 游客提示卡 */
+.guest-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #fbf6f0, #f6ece0);
+}
+
+.guest-card__icon {
+  font-size: 22px;
+  color: var(--brand-accent);
+  flex-shrink: 0;
+}
+
+.guest-card__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.guest-card__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+.guest-card__desc {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--brand-text-secondary);
+}
+
+.guest-card__btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
   border-radius: 999px;
-  padding: 8px 16px;
-  font-size: 12.5px;
-  color: var(--ai-text);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #e8b4b8, #d8a8ad);
+  transition: filter 0.2s ease;
+}
+
+.guest-card__btn:hover {
+  filter: brightness(1.06);
+}
+
+/* ========== 对话面板 ========== */
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 640px;
+  background: var(--brand-white);
+  border-radius: var(--brand-radius-lg);
+  border: 1px solid var(--brand-border);
+  box-shadow: var(--brand-shadow-sm);
+  overflow: hidden;
+}
+
+.chat-panel__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--brand-border);
+  background: linear-gradient(120deg, #fdfaf7, #fbf1f2);
+}
+
+.chat-panel__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #e8b4b8, #d8a8ad);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.chat-panel__meta {
+  flex: 1;
+}
+
+.chat-panel__name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+.chat-panel__state {
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+}
+
+.chat-panel__state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9db98c;
+}
+
+.chat-panel__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--brand-border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 12px;
+  color: var(--brand-text-regular);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.ai-suggest__chip:hover {
-  border-color: var(--ai-primary);
-  color: var(--ai-primary-hover);
-  background: #fff;
+.chat-panel__clear:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary-active);
 }
 
-/* 输入区（禁用态） */
-.ai-input {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 8px 8px 16px;
-  border-radius: 18px;
-  background: #fbfaf8;
-  border: 1.5px solid var(--ai-border);
-}
-
-.ai-input.is-disabled {
-  opacity: 0.7;
-}
-
-.ai-input__icon {
-  font-size: 18px;
-  color: var(--ai-text-soft);
-}
-
-.ai-input input {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: 13.5px;
-  color: var(--ai-text);
-}
-
-.ai-input__send {
-  width: 40px;
-  height: 40px;
-  border: none;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--ai-primary), var(--ai-primary-hover));
-  color: #fff;
-  font-size: 17px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.chat-panel__clear:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* 响应式 */
-@media (max-width: 860px) {
-  .ai-page { height: auto; }
-  .ai-layout { grid-template-columns: 1fr; }
-  .ai-sidebar { flex-direction: row; align-items: center; gap: 12px; }
-  .ai-new-chat { width: auto; padding: 10px 18px; }
-  .ai-sidebar__section { margin-top: 0; flex: 1; }
-  .ai-sidebar__label, .ai-sidebar__footer { display: none; }
-  .ai-sidebar__empty { padding: 12px; flex-direction: row; gap: 10px; }
-  .ai-sidebar__empty span { display: none; }
-  .ai-caps { grid-template-columns: 1fr; }
+/* 消息流 */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 20px;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(232, 180, 184, 0.06), transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(201, 168, 92, 0.05), transparent 36%),
+    #fdfaf7;
+}
+
+.msg-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  animation: msgIn 0.3s ease both;
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-row--user {
+  flex-direction: row-reverse;
+}
+
+.msg-avatar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.msg-avatar--ai {
+  background: linear-gradient(135deg, #e8b4b8, #d8a8ad);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(216, 168, 173, 0.3);
+}
+
+.msg-avatar--user {
+  background: var(--brand-aux-soft);
+  color: #5f6b76;
+}
+
+.msg-bubble-col {
+  max-width: 76%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.msg-row--user .msg-bubble-col {
+  align-items: flex-end;
+}
+
+.msg-meta {
+  font-size: 11px;
+  color: var(--brand-text-secondary);
+  margin: 0 4px 5px;
+}
+
+.msg-bubble {
+  padding: 11px 15px;
+  border-radius: 15px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.msg-bubble--ai {
+  background: #fff;
+  color: var(--brand-text);
+  border: 1px solid var(--brand-border);
+  border-top-left-radius: 5px;
+  box-shadow: 0 2px 8px rgba(74, 69, 72, 0.04);
+}
+
+.msg-bubble--user {
+  background: linear-gradient(135deg, #e8b4b8, #ddabb0);
+  color: #fff;
+  border-top-right-radius: 5px;
+  box-shadow: 0 4px 14px rgba(216, 168, 173, 0.28);
+}
+
+.msg-text {
+  white-space: pre-wrap;
+}
+
+/* AI 追问 chips */
+.msg-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.msg-suggest__chip {
+  border: 1px dashed var(--brand-primary);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--brand-primary-active);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.msg-suggest__chip:hover:not(:disabled) {
+  background: var(--brand-primary-soft);
+}
+
+.msg-suggest__chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 失败气泡 */
+.msg-bubble--error {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  background: #fdf6e7;
+  border: 1px solid #eadcb8;
+  color: #8a6d3b;
+  border-top-left-radius: 5px;
+}
+
+.msg-bubble__warn {
+  font-size: 17px;
+  color: var(--brand-accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.msg-error__body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.msg-retry {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-primary-active);
+  cursor: pointer;
+}
+
+.msg-retry:hover {
+  text-decoration: underline;
+}
+
+/* 思考动画 */
+.think-row {
+  margin-bottom: 20px;
+}
+
+.think-bubble {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 18px;
+}
+
+.think-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  animation: thinkBounce 1.2s ease-in-out infinite;
+}
+
+.think-dot:nth-child(2) {
+  background: var(--brand-accent);
+  animation-delay: 0.18s;
+}
+
+.think-dot:nth-child(3) {
+  background: #93a8b4;
+  animation-delay: 0.36s;
+}
+
+@keyframes thinkBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.55; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* 输入区 */
+.chat-input {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--brand-border);
+  background: #fff;
+}
+
+.chat-input__field {
+  flex: 1;
+}
+
+.chat-input__field :deep(.el-textarea__inner) {
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  box-shadow: none;
+  border-color: var(--brand-border);
+  resize: none;
+}
+
+.chat-input__field :deep(.el-textarea__inner:focus) {
+  border-color: var(--brand-primary);
+}
+
+.chat-input__send {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 22px;
+  border-radius: 13px;
+  font-weight: 600;
+}
+
+.chat-input__send .el-icon {
+  margin-right: 3px;
+}
+
+/* ========== 响应式：窄屏上下布局 ========== */
+@media (max-width: 900px) {
+  .ai-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-side {
+    order: 2;
+  }
+
+  .chat-panel {
+    order: 1;
+    height: 560px;
+  }
+
+  .ai-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .ai-hero__title {
+    font-size: 21px;
+  }
+
+  .msg-bubble-col {
+    max-width: 84%;
+  }
+}
+
+@media (max-width: 560px) {
+  .ai-hero {
+    padding: 22px 20px;
+  }
+
+  .chat-panel {
+    height: 520px;
+  }
+
+  .chat-messages {
+    padding: 16px 14px;
+  }
+
+  .chat-input {
+    padding: 12px;
+  }
+
+  .chat-input__send {
+    padding: 0 16px;
+  }
 }
 </style>
