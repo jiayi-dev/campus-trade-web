@@ -32,6 +32,92 @@
       </StatCard>
     </div>
 
+    <!-- 我的信誉（B2：评价 + 卖家信誉画像，卡片墙而非后台表格） -->
+    <el-card shadow="never" class="block-card rep-card" v-loading="repLoading">
+
+      <template #header>
+        <div class="block-header">
+          <span class="block-header__title">
+            我的信誉
+            <el-tag type="warning" size="small" effect="plain" round>
+              {{ rep.creditLevel || '校园新生' }}
+            </el-tag>
+          </span>
+          <span class="rep-card__hint">来自买家的真实评价，交易完成后持续积累</span>
+        </div>
+      </template>
+
+      <!-- 信誉概览：评分印章 + 统计 + 评分分布 -->
+      <div class="rep-overview">
+
+        <div class="rep-score">
+          <div class="rep-score__num is-num">{{ avgScoreText }}</div>
+          <el-rate :model-value="avgScoreValue" disabled allow-half size="small" />
+          <div class="rep-score__label">平均评分</div>
+        </div>
+
+        <div class="rep-metric">
+          <div class="rep-metric__num is-num">{{ rep.totalCount || 0 }}</div>
+          <div class="rep-metric__label">收到评价</div>
+        </div>
+
+        <div class="rep-metric">
+          <div class="rep-metric__num is-num">{{ rep.completedCount || 0 }}</div>
+          <div class="rep-metric__label">完成交易</div>
+        </div>
+
+        <div class="rep-dist">
+          <div v-for="row in distRows" :key="row.star" class="rep-dist__row">
+            <span class="rep-dist__star">{{ row.star }}星</span>
+            <div class="rep-dist__track">
+              <div class="rep-dist__fill" :style="{ width: row.percent + '%' }"></div>
+            </div>
+            <span class="rep-dist__count is-num">{{ row.count }}</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 最近评价 -->
+      <div class="rep-recent">
+        <div class="rep-recent__title">最近评价</div>
+
+        <el-empty
+            v-if="recentEvaluations.length === 0"
+            description="暂无评价，完成交易后将逐步积累校园信誉"
+            :image-size="90"
+        />
+
+        <div v-else class="rep-eval-list">
+          <div
+              v-for="ev in recentEvaluations"
+              :key="ev.evaluationId"
+              class="rep-eval"
+          >
+            <div class="rep-eval__head">
+              <span class="rep-eval__buyer">{{ ev.buyerName || '匿名买家' }}</span>
+              <el-rate :model-value="Number(ev.score || 0)" disabled size="small" />
+              <span class="rep-eval__time">{{ formatRelativeTime(ev.createTime) }}</span>
+            </div>
+            <p class="rep-eval__content">{{ ev.content }}</p>
+            <el-link
+                v-if="ev.goodsId"
+                type="primary"
+                :underline="false"
+                class="rep-eval__goods"
+                @click="goDetail(ev.goodsId)"
+            >
+              「{{ ev.goodsName || '商品已删除' }}」
+            </el-link>
+            <span v-else class="rep-eval__goods rep-eval__goods--plain">
+              「{{ ev.goodsName || '商品已删除' }}」
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </el-card>
+
     <!-- 我的商品 -->
     <el-card shadow="never" class="block-card">
 
@@ -264,7 +350,7 @@ import {
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import StatCard from '../components/StatCard.vue'
-import { formatPrice, formatDateTime } from '../utils/format'
+import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
 
 const router = useRouter()
 
@@ -354,6 +440,56 @@ const pendingCount = computed(() => {
 const recentOrders = computed(() => {
   return sellerOrders.value.slice(0, 5)
 })
+
+
+// =========================
+// 我的信誉（B2：评价 + 卖家信誉画像）
+// 数据来源 GET /evaluations/seller/{userId}：
+// 后端汇总 evaluation JOIN orders 的真实评价 + B1 统一信誉规则
+// =========================
+
+const rep = ref({})
+const repLoading = ref(false)
+
+// 平均评分：无评价时显示占位符，避免伪造 “0.0 分” 口碑
+const avgScoreText = computed(() => {
+  return (rep.value.totalCount || 0) > 0
+      ? Number(rep.value.avgScore || 0).toFixed(1)
+      : '--'
+})
+
+const avgScoreValue = computed(() => Number(rep.value.avgScore || 0))
+
+// 评分分布条：5 → 1 星，占比基于真实评价总数
+const distRows = computed(() => {
+  const total = rep.value.totalCount || 0
+  return [5, 4, 3, 2, 1].map(star => {
+    const count = Number(rep.value['star' + star] || 0)
+    return {
+      star,
+      count,
+      percent: total > 0 ? Math.round((count / total) * 100) : 0
+    }
+  })
+})
+
+const recentEvaluations = computed(() => rep.value.recentList || [])
+
+const loadReputation = async () => {
+  const userId = Number(localStorage.getItem('userId'))
+
+  if (!userId) return
+
+  repLoading.value = true
+
+  try {
+    rep.value = (await request.get(`/evaluations/seller/${userId}`)) || {}
+  } catch (error) {
+    // 信誉为附加信息，失败不阻塞工作台
+  } finally {
+    repLoading.value = false
+  }
+}
 
 
 // =========================
@@ -545,6 +681,7 @@ const handleDeliver = async (order) => {
 onMounted(() => {
   loadGoods()
   loadExtras()
+  loadReputation()
 })
 </script>
 
@@ -621,6 +758,119 @@ onMounted(() => {
   font-size: 13px;
   color: #5d7d87;
 }
+
+/* ============ 我的信誉（B2） ============ */
+
+.rep-card__hint {
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+}
+
+/* 信誉概览：评分印章 + 两项统计 + 评分分布 */
+.rep-overview {
+  display: grid;
+  grid-template-columns: auto repeat(2, auto) 1fr;
+  gap: 34px;
+  align-items: center;
+  padding-bottom: 18px;
+  border-bottom: 1px dashed var(--brand-border);
+}
+
+.rep-score { text-align: center; }
+
+.rep-score__num {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--brand-accent);
+}
+
+.rep-score__label { margin-top: 5px; font-size: 12px; color: var(--brand-text-secondary); }
+
+.rep-metric__num { font-size: 26px; font-weight: 700; color: var(--brand-text); line-height: 1.1; }
+.rep-metric__label { margin-top: 4px; font-size: 12px; color: var(--brand-text-secondary); }
+
+/* 评分分布条 */
+.rep-dist__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.rep-dist__row:last-child { margin-bottom: 0; }
+
+.rep-dist__star { width: 30px; flex-shrink: 0; font-size: 12px; color: var(--brand-text-secondary); }
+
+.rep-dist__track {
+  flex: 1;
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(74, 69, 72, 0.07);
+  overflow: hidden;
+}
+
+.rep-dist__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #e3c887, var(--brand-accent));
+  transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rep-dist__count { width: 22px; text-align: right; font-size: 12px; color: var(--brand-text-regular); }
+
+/* 最近评价卡片墙 */
+.rep-recent { padding-top: 16px; }
+
+.rep-recent__title {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text-regular);
+}
+
+.rep-eval-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.rep-eval {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--brand-border);
+  background:
+      linear-gradient(135deg, rgba(201, 168, 92, 0.05), transparent 55%),
+      var(--brand-bg);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+
+.rep-eval:hover { transform: translateY(-3px); box-shadow: var(--brand-shadow-sm); }
+
+.rep-eval__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rep-eval__buyer { font-size: 13px; font-weight: 600; color: var(--brand-text); }
+
+.rep-eval__time { margin-left: auto; font-size: 11.5px; color: var(--brand-text-secondary); }
+
+.rep-eval__content {
+  margin: 9px 0 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--brand-text-regular);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rep-eval__goods { font-size: 12px; }
+.rep-eval__goods--plain { color: var(--brand-text-secondary); }
 
 /* 小屏统计卡降为两列 */
 @media (max-width: 1100px) {

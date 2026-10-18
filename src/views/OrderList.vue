@@ -197,7 +197,31 @@
             {{ cardAction(order).text }}
           </div>
 
-          <!-- 已完成 -->
+          <!-- 已完成 + 买家 + 未评价 → 去评价 -->
+          <el-button
+              v-else-if="cardAction(order).kind === 'evaluate'"
+              type="warning"
+              size="default"
+              class="action-btn"
+              :loading="actingId === order.orderId"
+              @click="openEvaluate(order)"
+          >
+            <el-icon v-if="actingId !== order.orderId"><StarFilled /></el-icon>
+            去评价
+          </el-button>
+
+          <!-- 已完成 + 买家 + 已评价 → 查看评价 -->
+          <el-button
+              v-else-if="cardAction(order).kind === 'viewEval'"
+              size="default"
+              class="action-btn"
+              @click="openViewEval(order)"
+          >
+            <el-icon><StarFilled /></el-icon>
+            已评价
+          </el-button>
+
+          <!-- 已完成 + 卖家 / 已完成 + 买家无评价入口 → 交易完成 -->
           <div v-else-if="cardAction(order).kind === 'done'" class="order-card__done">
             <el-icon><CircleCheckFilled /></el-icon>
             交易已完成
@@ -347,6 +371,26 @@
             确认收货
           </el-button>
 
+          <el-button
+              v-else-if="cardAction(detailOrder).kind === 'evaluate'"
+              type="warning"
+              size="large"
+              :loading="actingId === detailOrder.orderId"
+              @click="openEvaluate(detailOrder)"
+          >
+            <el-icon v-if="actingId !== detailOrder.orderId"><StarFilled /></el-icon>
+            去评价这次交易
+          </el-button>
+
+          <el-button
+              v-else-if="cardAction(detailOrder).kind === 'viewEval'"
+              size="large"
+              @click="openViewEval(detailOrder)"
+          >
+            <el-icon><StarFilled /></el-icon>
+            查看我的评价
+          </el-button>
+
           <span v-else-if="cardAction(detailOrder).kind === 'wait'" class="detail-footer__wait">
             <el-icon><Clock /></el-icon>
             {{ cardAction(detailOrder).text }}
@@ -360,18 +404,107 @@
       </template>
     </el-drawer>
 
+    <!-- ==================== 评价提交弹窗 ==================== -->
+    <el-dialog
+        v-model="evaluateDialogVisible"
+        title="评价这次交易"
+        width="480px"
+        :close-on-click-modal="false"
+        class="eval-dialog"
+    >
+      <div v-if="evalTargetOrder" class="eval-target">
+        <el-icon><ShoppingBag /></el-icon>
+        <span>{{ evalTargetOrder.goodsName || '#' + evalTargetOrder.orderId }}</span>
+      </div>
+
+      <el-form
+          ref="evalFormRef"
+          :model="evalForm"
+          :rules="evalRules"
+          label-position="top"
+          class="eval-form"
+      >
+        <el-form-item label="本次交易评分" prop="rating">
+          <el-rate
+              v-model="evalForm.rating"
+              :max="5"
+              show-text
+              :texts="['很差', '一般', '还行', '满意', '超赞']"
+              class="eval-rate"
+          />
+        </el-form-item>
+
+        <el-form-item label="评价内容" prop="content">
+          <el-input
+              v-model="evalForm.content"
+              type="textarea"
+              :rows="4"
+              maxlength="300"
+              show-word-limit
+              placeholder="说说商品描述是否准确、卖家沟通是否顺畅、面交体验等，至少 5 个字"
+          />
+        </el-form-item>
+
+        <p class="eval-tip">
+          评价提交后不可修改。后端会校验：当前用户 = 订单买家 · 订单状态 = 已完成 · 尚未评价。
+        </p>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="evaluateDialogVisible = false">取消</el-button>
+        <el-button
+            type="primary"
+            :loading="evalSubmitting"
+            @click="submitEvaluate"
+        >
+          提交评价
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ==================== 查看评价弹窗 ==================== -->
+    <el-dialog
+        v-model="viewEvalDialogVisible"
+        title="我的评价"
+        width="480px"
+        class="eval-dialog"
+    >
+      <div v-if="viewEvalData" class="view-eval">
+        <div class="view-eval__header">
+          <div class="view-eval__goods">
+            <el-icon><ShoppingBag /></el-icon>
+            <span>{{ viewEvalData.goodsName || '商品已删除' }}</span>
+          </div>
+          <el-rate
+              :model-value="Number(viewEvalData.score)"
+              disabled
+              :max="5"
+              show-text
+              :texts="['很差', '一般', '还行', '满意', '超赞']"
+              class="view-eval__rate"
+          />
+        </div>
+        <div class="view-eval__content">{{ viewEvalData.content }}</div>
+        <div class="view-eval__time">
+          <el-icon><Clock /></el-icon>
+          评价于 {{ formatDateTime(viewEvalData.createTime) }}
+        </div>
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Refresh, ShoppingBag, Shop, Picture, View,
   CircleCheck, CircleCheckFilled, Box, Tickets,
-  School, Location, User, Clock, CircleCloseFilled, Van
+  School, Location, User, Clock, CircleCloseFilled, Van,
+  StarFilled, Star
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime } from '../utils/format'
@@ -396,6 +529,28 @@ const sellerCount = ref(0)
 const detailVisible = ref(false)
 const detailOrder = ref(null)
 
+// 评价状态：orderId -> { orderId, evaluationId, score }
+// 由 POST /evaluations/status 一次性查询所有已完成订单的评价状态
+const evalStatus = ref({})
+
+// 评价提交弹窗
+const evaluateDialogVisible = ref(false)
+const evalTargetOrder = ref(null)
+const evalSubmitting = ref(false)
+const evalFormRef = ref()
+const evalForm = reactive({ rating: 5, content: '' })
+const evalRules = {
+  rating: [{ required: true, message: '请选择评分', trigger: 'change' }],
+  content: [
+    { required: true, message: '请填写评价内容', trigger: 'blur' },
+    { min: 5, max: 300, message: '评价内容 5-300 字', trigger: 'blur' }
+  ]
+}
+
+// 查看已提交评价弹窗
+const viewEvalDialogVisible = ref(false)
+const viewEvalData = ref(null)
+
 // =========================
 // 数据加载
 // =========================
@@ -414,11 +569,37 @@ const loadOrders = async () => {
     } else {
       sellerCount.value = orders.value.length
     }
+
+    // 加载订单后批量查询评价状态（买家视角才需要：判断显示"去评价"还是"已评价"）
+    if (activeTab.value === 'buyer' && orders.value.length > 0) {
+      loadEvalStatus()
+    }
   } catch (error) {
     loadError.value = true
     orders.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// 批量查询已完成订单的评价状态：POST /evaluations/status
+// 后端返回 [{ orderId, evaluationId, score }]，未评价的不在结果中
+const loadEvalStatus = async () => {
+  const completedOrderIds = orders.value
+      .filter(o => Number(o.orderStatus) === 2)
+      .map(o => Number(o.orderId))
+
+  if (completedOrderIds.length === 0) {
+    evalStatus.value = {}
+    return
+  }
+
+  try {
+    const result = await request.post('/evaluations/status', { orderIds: completedOrderIds })
+    evalStatus.value = result || {}
+  } catch (error) {
+    // 评价状态查询失败不影响订单列表展示，默认全部"未评价"
+    evalStatus.value = {}
   }
 }
 
@@ -512,7 +693,14 @@ const cardAction = (order) => {
 
   const s = Number(order.orderStatus)
 
-  if (s === 2) return { kind: 'done' }
+  // 已完成订单：买家视角按评价状态分"去评价 / 已评价"，卖家视角仅"交易完成"
+  if (s === 2) {
+    if (isBuyerOrder(order)) {
+      const ev = evalStatus.value[Number(order.orderId)]
+      return ev ? { kind: 'viewEval' } : { kind: 'evaluate' }
+    }
+    return { kind: 'done' }
+  }
 
   if (s === 0) {
     return isSellerOrder(order)
@@ -699,6 +887,71 @@ const openDetail = (order) => {
 }
 
 // =========================
+// 评价：打开提交弹窗 / 提交 / 查看已提交
+//
+// 后端业务规则（EvaluationService.create）：
+// 1. buyerId 由 AuthContext 注入，不接收前端值
+// 2. 订单真实存在 + 当前用户 == 订单 buyerId
+// 3. 订单状态 = 2（已完成）
+// 4. 订单尚未评价（业务层校验 + evaluation.order_id UNIQUE 兜底并发）
+// 5. rating 1-5，content 5-300 字
+// =========================
+
+const openEvaluate = (order) => {
+  evalTargetOrder.value = order
+  evalForm.rating = 5
+  evalForm.content = ''
+  evaluateDialogVisible.value = true
+}
+
+const submitEvaluate = async () => {
+  // 表单校验失败抛异常，由 Element Plus 自动渲染错误
+  await evalFormRef.value.validate()
+
+  evalSubmitting.value = true
+
+  try {
+    const result = await request.post('/evaluations', {
+      orderId: Number(evalTargetOrder.value.orderId),
+      rating: Number(evalForm.rating),
+      content: evalForm.content.trim()
+    })
+
+    if (result === '评价提交成功') {
+      ElMessage.success('评价已提交，感谢你的反馈')
+      evaluateDialogVisible.value = false
+      // 刷新评价状态 + 订单列表（防止 detail drawer 状态过期）
+      await reload()
+      if (detailOrder.value && detailOrder.value.orderId === evalTargetOrder.value.orderId) {
+        detailOrder.value = orders.value.find(o => o.orderId === evalTargetOrder.value.orderId) || detailOrder.value
+      }
+    } else {
+      ElMessage.error(result || '评价提交失败')
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    evalSubmitting.value = false
+  }
+}
+
+const openViewEval = async (order) => {
+  try {
+    const result = await request.get(`/evaluations/order/${order.orderId}`)
+    if (result) {
+      viewEvalData.value = result
+      viewEvalDialogVisible.value = true
+    } else {
+      ElMessage.info('该订单尚未评价')
+      // 状态不一致：本地 evalStatus 显示已评价，但后端查不到 → 刷新状态
+      await reload()
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  }
+}
+
+// =========================
 // 空状态文案
 // =========================
 
@@ -748,7 +1001,7 @@ onMounted(() => {
   overflow: hidden;
   padding: 36px 32px 30px;
   margin-bottom: 22px;
-  background: linear-gradient(135deg, #fbf6f0 0%, #fef9f3 50%, #f9f0f1 100%);
+  background: linear-gradient(135deg, var(--brand-bg) 0%, #fef9f3 50%, #f9f0f1 100%);
   border: 1px solid #f0e6dc;
 }
 
@@ -831,13 +1084,13 @@ onMounted(() => {
 .stat-pill__num {
   font-size: 22px;
   font-weight: 800;
-  color: #4a4548;
+  color: var(--brand-text);
   line-height: 1.1;
 }
 
 .stat-pill__label {
   font-size: 11px;
-  color: #9a8e88;
+  color: var(--brand-text-secondary);
   margin-top: 2px;
 }
 
@@ -1076,7 +1329,7 @@ onMounted(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #4a4548;
+  color: var(--brand-text);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1086,13 +1339,13 @@ onMounted(() => {
 }
 
 .order-card__title:hover {
-  color: #d8a8ad;
+  color: var(--brand-primary);
 }
 
 .order-card__price {
   font-size: 20px;
   font-weight: 800;
-  color: #d8a8ad;
+  color: var(--brand-primary);
   font-feature-settings: 'tnum';
   line-height: 1.1;
   flex-shrink: 0;
@@ -1447,6 +1700,98 @@ onMounted(() => {
 
 .detail-footer__done {
   color: #8fae6c;
+}
+
+/* ========== 评价弹窗 ========== */
+
+.eval-dialog :deep(.el-dialog__body) {
+  padding: 0 24px 12px;
+}
+
+.eval-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fbf6f0 0%, #fef9f3 100%);
+  border: 1px solid #f0e6dc;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a4548;
+}
+
+.eval-target .el-icon {
+  color: #d8a8ad;
+  font-size: 17px;
+}
+
+.eval-rate {
+  margin: 4px 0 16px;
+}
+
+.eval-rate :deep(.el-rate__icon) {
+  font-size: 32px;
+}
+
+.eval-tip {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: #9a8e88;
+  background: #fbf6f0;
+  border-radius: 8px;
+  border-left: 3px solid #c9a85c;
+  line-height: 1.65;
+}
+
+/* 查看评价弹窗 */
+
+.view-eval__header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f5ede5;
+  margin-bottom: 16px;
+}
+
+.view-eval__goods {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a4548;
+}
+
+.view-eval__goods .el-icon {
+  color: #d8a8ad;
+}
+
+.view-eval__rate :deep(.el-rate__icon) {
+  font-size: 24px;
+}
+
+.view-eval__content {
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #4a4548;
+  background: #fbf6f0;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 14px;
+}
+
+.view-eval__time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: #9a8e88;
 }
 
 /* ========== 响应式 ========== */

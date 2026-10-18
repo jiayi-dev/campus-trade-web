@@ -333,12 +333,15 @@
             <div v-loading="sellerLoading" class="seller-box">
 
               <template v-if="seller">
-                <div class="seller-box__head">
+                <div class="seller-box__head" @click="goSellerProfile" role="button" tabindex="0">
                   <div class="seller-box__avatar">
                     {{ (seller.username || '?').charAt(0) }}
                   </div>
                   <div>
-                    <div class="seller-box__name">{{ seller.username }}</div>
+                    <div class="seller-box__name">
+                      {{ seller.username }}
+                      <el-icon class="seller-box__link-icon"><ArrowRight /></el-icon>
+                    </div>
                     <el-tag
                         size="small"
                         :type="(roleTagMap[seller.role] || 'info')"
@@ -373,6 +376,70 @@
 
             </div>
 
+            <!-- 卖家信誉区块：游客也能看（公开数据，类似淘宝卖家评价页） -->
+            <div v-if="seller" v-loading="creditLoading" class="seller-credit">
+
+              <div class="seller-credit__head">
+                <span class="seller-credit__title">
+                  <el-icon><Medal /></el-icon>卖家信誉
+                </span>
+                <el-tag
+                    v-if="credit"
+                    size="small"
+                    type="warning"
+                    effect="plain"
+                    round
+                    class="seller-credit__level"
+                >
+                  {{ credit.creditLevel }}
+                </el-tag>
+              </div>
+
+              <div v-if="credit" class="seller-credit__score-row">
+                <div class="seller-credit__score-block">
+                  <el-rate
+                      :model-value="Number(credit.avgScore)"
+                      disabled
+                      :max="5"
+                      show-score
+                      score-template="{value}"
+                      class="seller-credit__rate"
+                  />
+                </div>
+                <div class="seller-credit__count">
+                  <span class="seller-credit__count-num">{{ credit.totalCount }}</span>
+                  <span class="seller-credit__count-label">条评价</span>
+                </div>
+              </div>
+
+              <div v-if="credit" class="seller-credit__stats">
+                <div class="credit-stat">
+                  <div class="credit-stat__num">{{ credit.completedCount }}</div>
+                  <div class="credit-stat__label">完成交易</div>
+                </div>
+                <div class="credit-stat">
+                  <div class="credit-stat__num">{{ credit.creditScore }}</div>
+                  <div class="credit-stat__label">信用积分</div>
+                </div>
+              </div>
+
+              <!-- 卖家无评价：引导完成交易逐步积累 -->
+              <div v-if="credit && Number(credit.totalCount) === 0" class="seller-credit__empty">
+                暂无评价，完成交易后将逐步积累校园信誉。
+              </div>
+
+              <!-- 查看评价按钮：有评价才出现 -->
+              <el-button
+                  v-if="credit && Number(credit.totalCount) > 0"
+                  class="seller-credit__view-btn"
+                  plain
+                  @click="openGoodsEvaluations"
+              >
+                查看本商品评价
+                <el-icon><ArrowRight /></el-icon>
+              </el-button>
+            </div>
+
           </el-card>
 
         </div>
@@ -380,6 +447,48 @@
       </div>
 
     </template>
+
+    <!-- 商品评价列表弹窗：游客也能看 -->
+    <el-dialog
+        v-model="evalListVisible"
+        title="商品评价"
+        width="560px"
+        class="goods-eval-dialog"
+    >
+      <div v-loading="evalLoading" class="goods-eval-list">
+        <el-empty
+            v-if="!evalLoading && goodsEvaluations.length === 0"
+            description="该商品还没有评价"
+            :image-size="80"
+        />
+
+        <div
+            v-for="ev in goodsEvaluations"
+            :key="ev.evaluationId"
+            class="goods-eval-item"
+        >
+          <div class="goods-eval-item__head">
+            <div class="goods-eval-item__avatar">
+              {{ (ev.buyerName || '?').charAt(0) }}
+            </div>
+            <div class="goods-eval-item__meta">
+              <div class="goods-eval-item__name">{{ ev.buyerName || '已注销用户' }}</div>
+              <el-rate
+                  :model-value="Number(ev.score)"
+                  disabled
+                  :max="5"
+                  size="small"
+                  class="goods-eval-item__rate"
+              />
+            </div>
+            <div class="goods-eval-item__time">
+              {{ formatRelativeTime(ev.createTime) }}
+            </div>
+          </div>
+          <div class="goods-eval-item__content">{{ ev.content }}</div>
+        </div>
+      </div>
+    </el-dialog>
 
   </div>
 </template>
@@ -408,7 +517,8 @@ import {
   EditPen,
   Delete,
   Sell,
-  Lock
+  Lock,
+  Medal
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
@@ -435,6 +545,15 @@ const goods = ref({})
 const categories = ref([])
 const seller = ref(null)
 const sellerLoading = ref(false)
+
+// 卖家信誉：公开 GET，游客也能看
+const credit = ref(null)
+const creditLoading = ref(false)
+
+// 商品评价列表弹窗
+const evalListVisible = ref(false)
+const evalLoading = ref(false)
+const goodsEvaluations = ref([])
 
 const isFavorite = ref(false)
 const favLoading = ref(false)
@@ -674,17 +793,46 @@ const loadSeller = async () => {
   if (!isLoggedIn()) {
     sellerLoading.value = false
     seller.value = null
-    return
+  } else {
+    sellerLoading.value = true
+    try {
+      seller.value = await request.get(`/user/${goods.value.userId}`)
+    } catch (error) {
+      seller.value = null
+    } finally {
+      sellerLoading.value = false
+    }
   }
 
-  sellerLoading.value = true
+  // 卖家信誉：公开接口，游客也能查看（类似淘宝卖家评价页）
+  loadSellerCredit()
+}
 
+// 加载卖家信誉画像：GET /evaluations/seller/{sellerId}
+// 公开数据：评价总数 / 平均分 / 1-5星分布 / 完成交易数 / 信用分 / 信用等级
+const loadSellerCredit = async () => {
+  if (!goods.value.userId) return
+  creditLoading.value = true
   try {
-    seller.value = await request.get(`/user/${goods.value.userId}`)
+    credit.value = await request.get(`/evaluations/seller/${goods.value.userId}`)
   } catch (error) {
-    seller.value = null
+    credit.value = null
   } finally {
-    sellerLoading.value = false
+    creditLoading.value = false
+  }
+}
+
+// 打开商品评价列表弹窗：GET /evaluations/goods/{goodsId}
+const openGoodsEvaluations = async () => {
+  evalListVisible.value = true
+  evalLoading.value = true
+  try {
+    const result = await request.get(`/evaluations/goods/${goodsId}`)
+    goodsEvaluations.value = Array.isArray(result) ? result : []
+  } catch (error) {
+    goodsEvaluations.value = []
+  } finally {
+    evalLoading.value = false
   }
 }
 
@@ -869,9 +1017,18 @@ const onGuestSellerLogin = () => {
 
 
 // =========================
+// 跳转卖家公开主页
+// =========================
+const goSellerProfile = () => {
+  if (goods.value && goods.value.userId) {
+    router.push(`/seller/${goods.value.userId}`)
+  }
+}
+
+
+// =========================
 // 联系卖家：滚动到留言区并聚焦输入框
 // =========================
-
 const scrollToMessage = () => {
   // 游客门禁：联系卖家本质是发留言，必须登录
   if (!isLoggedIn()) {
@@ -1432,6 +1589,15 @@ onMounted(loadPage)
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-radius: 10px;
+  padding: 4px;
+  margin-inline: -4px;
+}
+
+.seller-box__head:hover {
+  background: var(--brand-bg-soft);
 }
 
 .seller-box__avatar {
@@ -1446,6 +1612,20 @@ onMounted(loadPage)
   font-weight: 600;
   color: var(--brand-text);
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.seller-box__link-icon {
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+  transition: transform 0.2s;
+}
+
+.seller-box__head:hover .seller-box__link-icon {
+  transform: translateX(2px);
+  color: var(--brand-primary);
 }
 
 .seller-box__row {
@@ -1483,6 +1663,194 @@ onMounted(loadPage)
   font-size: 13px;
   color: var(--brand-text-secondary);
   margin: 0;
+}
+
+/* 卖家信誉区块 */
+.seller-credit {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--brand-border);
+}
+
+.seller-credit__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.seller-credit__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+.seller-credit__title .el-icon {
+  color: var(--brand-accent);
+  font-size: 16px;
+}
+
+.seller-credit__level {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.seller-credit__score-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(216, 168, 173, 0.07) 0%, rgba(201, 168, 92, 0.05) 100%);
+  margin-bottom: 12px;
+}
+
+.seller-credit__score-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.seller-credit__rate :deep(.el-rate__icon) {
+  font-size: 20px;
+}
+
+.seller-credit__count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-left: 14px;
+  border-left: 1px dashed var(--brand-border);
+}
+
+.seller-credit__count-num {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--brand-text);
+  line-height: 1.1;
+}
+
+.seller-credit__count-label {
+  font-size: 11px;
+  color: var(--brand-text-secondary);
+  margin-top: 2px;
+}
+
+.seller-credit__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.credit-stat {
+  text-align: center;
+  padding: 8px 6px;
+  border-radius: 10px;
+  background: var(--brand-bg-soft);
+}
+
+.credit-stat__num {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--brand-accent);
+  line-height: 1.2;
+}
+
+.credit-stat__label {
+  font-size: 11px;
+  color: var(--brand-text-secondary);
+  margin-top: 2px;
+}
+
+.seller-credit__empty {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+  padding: 10px 6px 4px;
+  line-height: 1.6;
+}
+
+.seller-credit__view-btn {
+  width: 100%;
+  border-style: dashed;
+}
+
+/* 商品评价列表弹窗 */
+
+.goods-eval-dialog :deep(.el-dialog__body) {
+  padding: 0 24px 16px;
+}
+
+.goods-eval-list {
+  min-height: 160px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.goods-eval-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--brand-border);
+}
+
+.goods-eval-item:last-child {
+  border-bottom: none;
+}
+
+.goods-eval-item__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.goods-eval-item__avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.goods-eval-item__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.goods-eval-item__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text);
+}
+
+.goods-eval-item__rate :deep(.el-rate__icon) {
+  font-size: 14px;
+}
+
+.goods-eval-item__time {
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+  flex-shrink: 0;
+}
+
+.goods-eval-item__content {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--brand-text-regular, #444);
+  padding-left: 44px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* 窄屏：两栏堆叠 */
