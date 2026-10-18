@@ -77,6 +77,10 @@
                 <el-icon><UserFilled /></el-icon>
                 {{ roleLabel }} · {{ username }}
               </el-dropdown-item>
+              <el-dropdown-item command="profile" divided>
+                <el-icon><User /></el-icon>
+                个人中心
+              </el-dropdown-item>
               <el-dropdown-item command="logout" divided>
                 <el-icon><SwitchButton /></el-icon>
                 退出登录
@@ -116,6 +120,7 @@ import {
   SwitchButton,
   ArrowDown,
   RefreshRight,
+  User,
   Promotion,
   CirclePlus,
   MagicStick
@@ -258,6 +263,10 @@ const roleLabel = computed(() => roleLabelMap[role.value] || '用户')
 const roleTagType = computed(() => roleTagTypeMap[role.value] || 'info')
 
 const handleCommand = (command) => {
+  if (command === 'profile') {
+    router.push('/profile')
+    return
+  }
   if (command === 'logout') {
     handleLogout()
   }

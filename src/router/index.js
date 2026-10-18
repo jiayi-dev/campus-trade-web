@@ -101,6 +101,16 @@ const router = createRouter({
           }
         },
         {
+          // 个人中心：资料 / 数据概览 / 账户安全 / 卖家身份
+          path: 'profile',
+          component: () => import('../views/Profile.vue'),
+          meta: {
+            title: '个人中心',
+            requireAuth: true,
+            roles: ['student', 'seller', 'admin']
+          }
+        },
+        {
           path: 'seller-apply',
           component: () => import('../views/SellerApply.vue'),
           meta: {
@@ -116,6 +126,15 @@ const router = createRouter({
             title: '我的店铺',
             requireAuth: true,
             roles: ['seller']
+          }
+        },
+        {
+          // 卖家公开主页（游客可看商品+信誉，联系方式登录后可见）
+          path: 'seller/:id',
+          component: () => import('../views/SellerProfile.vue'),
+          meta: {
+            title: '卖家主页',
+            public: true
           }
         },
         {
