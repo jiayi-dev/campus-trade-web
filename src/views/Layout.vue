@@ -126,7 +126,8 @@ import {
   MagicStick,
   Collection,
   Search,
-  TrendCharts
+  TrendCharts,
+  ChatDotRound
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -228,6 +229,13 @@ const menus = [
     path: '/orders/center',
     roles: ['student', 'seller', 'admin'],
     icon: Tickets
+  },
+  {
+    // 消息中心：用户与用户之间的交易私聊
+    name: '消息中心',
+    path: '/messages',
+    roles: ['student', 'seller', 'admin'],
+    icon: ChatDotRound
   },
   {
     // 发布工作台：seller 直接发布；student 进入引导页（成为卖家漏斗入口）

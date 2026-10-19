@@ -118,6 +118,12 @@ const router = createRouter({
           meta: { title: '订单中心', requireAuth: true, roles: ['student', 'seller', 'admin'] }
         },
         {
+          // 消息中心：用户与用户之间的交易私聊
+          path: 'messages',
+          component: () => import('../views/MessageCenter.vue'),
+          meta: { title: '消息中心', requireAuth: true, roles: ['student', 'seller', 'admin'] }
+        },
+        {
           // AI 助手：游客可进入页面并使用基础问答，登录态用于未来保存个人会话
           path: 'ai-assistant',
           component: () => import('../views/AiAssistant.vue'),
