@@ -94,6 +94,12 @@ const router = createRouter({
           }
         },
         {
+          // 订单中心：独立订单页（可选 orderId 参数进入详情视图）
+          path: 'orders/center/:orderId?',
+          component: () => import('../views/OrderCenter.vue'),
+          meta: { title: '订单中心', requireAuth: true, roles: ['student', 'seller', 'admin'] }
+        },
+        {
           // AI 助手：游客可进入页面并使用基础问答，登录态用于未来保存个人会话
           path: 'ai-assistant',
           component: () => import('../views/AiAssistant.vue'),

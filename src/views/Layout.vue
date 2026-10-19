@@ -207,6 +207,13 @@ const menus = [
     icon: Tickets
   },
   {
+    // 订单中心：状态分组 + 时间线视图（与 /orders 交易中心并存）
+    name: '订单中心',
+    path: '/orders/center',
+    roles: ['student', 'seller', 'admin'],
+    icon: Tickets
+  },
+  {
     // 发布工作台：seller 直接发布；student 进入引导页（成为卖家漏斗入口）
     name: '发布商品',
     path: '/publish',
