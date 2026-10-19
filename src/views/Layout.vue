@@ -124,7 +124,8 @@ import {
   Promotion,
   CirclePlus,
   MagicStick,
-  Collection
+  Collection,
+  Search
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -192,6 +193,13 @@ const menus = [
     path: '/goods',
     roles: ['student', 'seller', 'admin'],
     icon: ShoppingBag
+  },
+  {
+    // 求购市场：需求广场（公告墙式需求流）
+    name: '求购市场',
+    path: '/wanted',
+    roles: ['student', 'seller', 'admin'],
+    icon: Search
   },
   {
     // 专题集市：编辑式专题探索页

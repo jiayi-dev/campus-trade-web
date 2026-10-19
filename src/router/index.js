@@ -88,6 +88,18 @@ const router = createRouter({
             public: true
           }
         },
+        {
+          // 校园求购市场：需求广场（登录后可用）
+          path: 'wanted',
+          component: () => import('../views/Wanted.vue'),
+          meta: { title: '求购市场', requireAuth: true, roles: ['student', 'seller', 'admin'] }
+        },
+        {
+          // 求购详情：同一组件，靠参数切详情视图
+          path: 'wanted/:wantedId',
+          component: () => import('../views/Wanted.vue'),
+          meta: { title: '求购详情', requireAuth: true, roles: ['student', 'seller', 'admin'] }
+        },
 
         // ====== 以下页面需要登录 ======
         {
