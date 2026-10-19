@@ -152,6 +152,12 @@ const router = createRouter({
           }
         },
         {
+          // 我的收藏与浏览足迹（收藏=服务端真实数据；足迹=本地 localStorage）
+          path: 'me/collections',
+          component: () => import('../views/MeCollections.vue'),
+          meta: { title: '收藏与足迹', requireAuth: true, roles: ['student', 'seller', 'admin'] }
+        },
+        {
           path: 'seller-apply',
           component: () => import('../views/SellerApply.vue'),
           meta: {

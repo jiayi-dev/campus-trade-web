@@ -127,7 +127,8 @@ import {
   Collection,
   Search,
   TrendCharts,
-  ChatDotRound
+  ChatDotRound,
+  Star
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -269,6 +270,13 @@ const menus = [
     path: '/seller/dashboard',
     roles: ['seller', 'admin'],
     icon: TrendCharts
+  },
+  {
+    // 收藏与足迹：收藏=服务端真实数据；浏览足迹=当前浏览器本地记录
+    name: '收藏与足迹',
+    path: '/me/collections',
+    roles: ['student', 'seller', 'admin'],
+    icon: Star
   },
   {
     name: '管理后台',

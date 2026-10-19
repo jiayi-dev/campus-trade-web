@@ -523,6 +523,7 @@ import {
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
 import { isLoggedIn, requireLogin } from '../utils/auth'
+import { recordFootprint } from '../utils/footprint'
 
 const route = useRoute()
 const router = useRouter()
@@ -738,6 +739,8 @@ const loadPage = async () => {
     reportView()
   }
 
+  // 浏览足迹：仅记录在当前浏览器本地（后端无浏览记录接口），页面 /me/collections 展示
+  recordFootprint(goods.value)
   // 卖家信息依赖商品详情中的 userId，在商品加载成功后单独请求
   loadSeller()
 }
