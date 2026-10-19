@@ -129,7 +129,8 @@ import {
   TrendCharts,
   ChatDotRound,
   ChatLineSquare,
-  Star
+  Star,
+  Lock
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -220,6 +221,13 @@ const menus = [
     icon: ChatLineSquare
   },
   {
+    // 安全中心：交易安全指引（公开页面，游客菜单也会展示）
+    name: '安全中心',
+    path: '/safety',
+    roles: ['student', 'seller', 'admin'],
+    icon: Lock
+  },
+  {
     // AI 助手：页面与基础问答对游客同样开放，游客菜单也会展示
     name: 'AI 助手',
     path: '/ai-assistant',
@@ -303,6 +311,7 @@ const visibleMenus = computed(() => {
       { name: '市场', path: '/goods', icon: ShoppingBag },
       { name: '专题集市', path: '/discover', icon: Collection },
       { name: '校园社区', path: '/community', icon: ChatLineSquare },
+      { name: '安全中心', path: '/safety', icon: Lock },
       { name: 'AI 助手', path: '/ai-assistant', icon: MagicStick }
     ]
   }

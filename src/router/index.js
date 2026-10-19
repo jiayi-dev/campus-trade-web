@@ -69,6 +69,13 @@ const router = createRouter({
           meta: { title: '专题集市', public: true }
         },
         {
+          // 交易安全中心：安全指引型页面，游客可浏览
+          // 内容为平台整理的安全建议，非系统风险检测结果
+          path: 'safety',
+          component: () => import('../views/Safety.vue'),
+          meta: { title: '交易安全中心', public: true }
+        },
+        {
           // 商品发布向导：分步创作流（与 /publish 单页工作台并存）
           // 静态段 goods/publish 的匹配优先级高于动态段 goods/:id，不会被详情页抢占
           path: 'goods/publish',
