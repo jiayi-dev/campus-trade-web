@@ -130,7 +130,8 @@ import {
   ChatDotRound,
   ChatLineSquare,
   Star,
-  Lock
+  Lock,
+  DataAnalysis
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -299,6 +300,13 @@ const menus = [
     path: '/admin',
     roles: ['admin'],
     icon: Setting
+  },
+  {
+    // 平台运营数据中心：平台级数据洞察（与「管理后台」操作型页面区分）
+    name: '运营数据中心',
+    path: '/admin/analytics',
+    roles: ['admin'],
+    icon: DataAnalysis
   }
 ]
 

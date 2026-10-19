@@ -223,6 +223,17 @@ const router = createRouter({
             requireAuth: true,
             roles: ['admin']
           }
+        },
+        {
+          // 平台运营数据中心：数据洞察工作台（与 /admin 管理后台并存，职责不同）
+          // 静态段 admin/analytics 与静态段 admin 精确匹配互不冲突
+          path: 'admin/analytics',
+          component: () => import('../views/AdminAnalytics.vue'),
+          meta: {
+            title: '运营数据中心',
+            requireAuth: true,
+            roles: ['admin']
+          }
         }
       ]
     }
