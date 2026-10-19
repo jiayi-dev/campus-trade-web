@@ -128,6 +128,7 @@ import {
   Search,
   TrendCharts,
   ChatDotRound,
+  ChatLineSquare,
   Star
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
@@ -212,6 +213,13 @@ const menus = [
     icon: Collection
   },
   {
+    // 校园社区：图文动态内容流（登录后可用）
+    name: '校园社区',
+    path: '/community',
+    roles: ['student', 'seller', 'admin'],
+    icon: ChatLineSquare
+  },
+  {
     // AI 助手：页面与基础问答对游客同样开放，游客菜单也会展示
     name: 'AI 助手',
     path: '/ai-assistant',
@@ -288,11 +296,13 @@ const menus = [
 
 // 按角色过滤菜单
 const visibleMenus = computed(() => {
-  // 游客显示"市场""专题集市"与"AI 助手"三个公开页面，其他业务菜单需登录后才能使用
+  // 游客显示公开页面（市场/专题集市/AI 助手）与「校园社区」入口，
+  // 校园社区需登录，未登录点击会被路由守卫引导到登录页；其他业务菜单需登录后才能使用
   if (!isLoggedIn.value) {
     return [
       { name: '市场', path: '/goods', icon: ShoppingBag },
       { name: '专题集市', path: '/discover', icon: Collection },
+      { name: '校园社区', path: '/community', icon: ChatLineSquare },
       { name: 'AI 助手', path: '/ai-assistant', icon: MagicStick }
     ]
   }

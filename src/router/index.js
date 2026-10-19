@@ -100,6 +100,19 @@ const router = createRouter({
           component: () => import('../views/Wanted.vue'),
           meta: { title: '求购详情', requireAuth: true, roles: ['student', 'seller', 'admin'] }
         },
+        {
+          // 校园社区动态：静置式内容流（登录后可用）
+          path: 'community',
+          component: () => import('../views/Community.vue'),
+          meta: { title: '校园社区', requireAuth: true, roles: ['student', 'seller', 'admin'] }
+        },
+        {
+          // 动态详情：正文 / 评论 / 点赞 / 关联商品
+          // 静态段 community 与动态段 community/:postId 不冲突
+          path: 'community/:postId',
+          component: () => import('../views/CommunityDetail.vue'),
+          meta: { title: '动态详情', requireAuth: true, roles: ['student', 'seller', 'admin'] }
+        },
 
         // ====== 以下页面需要登录 ======
         {
