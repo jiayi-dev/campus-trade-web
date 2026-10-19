@@ -194,6 +194,13 @@ const menus = [
     icon: ShoppingBag
   },
   {
+    // 专题集市：编辑式专题探索页
+    name: '专题集市',
+    path: '/discover',
+    roles: ['student', 'seller', 'admin'],
+    icon: Collection
+  },
+  {
     // AI 助手：页面与基础问答对游客同样开放，游客菜单也会展示
     name: 'AI 助手',
     path: '/ai-assistant',
@@ -249,10 +256,11 @@ const menus = [
 
 // 按角色过滤菜单
 const visibleMenus = computed(() => {
-  // 游客显示"市场"与"AI 助手"两个公开页面，其他业务菜单需登录后才能使用
+  // 游客显示"市场""专题集市"与"AI 助手"三个公开页面，其他业务菜单需登录后才能使用
   if (!isLoggedIn.value) {
     return [
       { name: '市场', path: '/goods', icon: ShoppingBag },
+      { name: '专题集市', path: '/discover', icon: Collection },
       { name: 'AI 助手', path: '/ai-assistant', icon: MagicStick }
     ]
   }

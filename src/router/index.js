@@ -63,6 +63,12 @@ const router = createRouter({
           }
         },
         {
+          // 校园专题集市：编辑式专题探索页（游客可浏览）
+          path: 'discover',
+          component: () => import('../views/Discover.vue'),
+          meta: { title: '专题集市', public: true }
+        },
+        {
           // 商品发布向导：分步创作流（与 /publish 单页工作台并存）
           // 静态段 goods/publish 的匹配优先级高于动态段 goods/:id，不会被详情页抢占
           path: 'goods/publish',
