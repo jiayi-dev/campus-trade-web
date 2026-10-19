@@ -164,6 +164,17 @@ const router = createRouter({
           }
         },
         {
+          // 卖家经营工作台：经营数据驾驶舱（与 /seller 我的店铺并存，版式与职责不同）
+          // 静态段 seller/dashboard 优先于动态段 seller/:id，不会被卖家主页抢占
+          path: 'seller/dashboard',
+          component: () => import('../views/SellerWorkbench.vue'),
+          meta: {
+            title: '经营工作台',
+            requireAuth: true,
+            roles: ['seller', 'admin']
+          }
+        },
+        {
           // 卖家公开主页（游客可看商品+信誉，联系方式登录后可见）
           path: 'seller/:id',
           component: () => import('../views/SellerProfile.vue'),

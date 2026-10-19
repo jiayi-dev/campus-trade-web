@@ -125,7 +125,8 @@ import {
   CirclePlus,
   MagicStick,
   Collection,
-  Search
+  Search,
+  TrendCharts
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -253,6 +254,13 @@ const menus = [
     path: '/seller',
     roles: ['seller'],
     icon: Shop
+  },
+  {
+    // 经营工作台：卖家经营数据驾驶舱（与 /seller 我的店铺区分）
+    name: '经营工作台',
+    path: '/seller/dashboard',
+    roles: ['seller', 'admin'],
+    icon: TrendCharts
   },
   {
     name: '管理后台',
