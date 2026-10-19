@@ -63,6 +63,17 @@ const router = createRouter({
           }
         },
         {
+          // 商品发布向导：分步创作流（与 /publish 单页工作台并存）
+          // 静态段 goods/publish 的匹配优先级高于动态段 goods/:id，不会被详情页抢占
+          path: 'goods/publish',
+          component: () => import('../views/GoodsPublishWizard.vue'),
+          meta: {
+            title: '发布向导',
+            requireAuth: true,
+            roles: ['student', 'seller']
+          }
+        },
+        {
           // 商品详情：游客可查看全部商品信息与图片
           path: 'goods/:id',
           component: () => import('../views/GoodsDetail.vue'),

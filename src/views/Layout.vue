@@ -123,7 +123,8 @@ import {
   User,
   Promotion,
   CirclePlus,
-  MagicStick
+  MagicStick,
+  Collection
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -211,6 +212,13 @@ const menus = [
     path: '/publish',
     roles: ['student', 'seller'],
     icon: CirclePlus
+  },
+  {
+    // 发布向导：分步创作流（/publish 为单页工作台，此处为四步向导）
+    name: '发布向导',
+    path: '/goods/publish',
+    roles: ['student', 'seller'],
+    icon: Collection
   },
   {
     name: '成为卖家',
