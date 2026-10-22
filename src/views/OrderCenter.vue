@@ -149,6 +149,7 @@
                 <el-option label="金额：低 → 高" value="amountAsc" />
               </el-select>
               <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
+              <el-button :icon="Warning" plain @click="openMyAppeals">我的申诉</el-button>
             </div>
           </div>
 
@@ -241,6 +242,26 @@
                   </el-button>
 
                   <el-button
+                      v-if="Number(order.orderStatus) === 0 || Number(order.orderStatus) === 1"
+                      size="default"
+                      class="oc-btn"
+                      plain
+                      type="danger"
+                      :loading="cancellingId === order.orderId"
+                      @click="openCancel(order)"
+                  >取消订单</el-button>
+
+                  <el-button
+                      v-if="Number(order.orderStatus) !== 3"
+                      size="default"
+                      class="oc-btn"
+                      plain
+                      @click="openAppeal(order)"
+                  >
+                    <el-icon><Warning /></el-icon>交易申诉
+                  </el-button>
+
+                  <el-button
                       v-if="cardAction(order).kind === 'deliver'"
                       type="primary"
                       size="default"
@@ -288,6 +309,10 @@
 
                   <div v-else-if="cardAction(order).kind === 'done'" class="oc-hint oc-hint--done">
                     <el-icon><CircleCheckFilled /></el-icon>交易已完成
+                  </div>
+
+                  <div v-else-if="cardAction(order).kind === 'cancelled'" class="oc-hint oc-hint--cancelled">
+                    <el-icon><CircleCloseFilled /></el-icon>订单已取消
                   </div>
                 </div>
               </article>
@@ -646,6 +671,106 @@
       </div>
     </el-dialog>
 
+    <!-- ==================== 取消订单弹窗 ==================== -->
+    <el-dialog
+        v-model="cancelDialogVisible"
+        title="取消订单"
+        width="460px"
+        :close-on-click-modal="false"
+        class="appeal-dialog"
+    >
+      <div v-if="cancelTarget" class="appeal-target">
+        <el-icon><Tickets /></el-icon>
+        <span>#{{ cancelTarget.orderId }} · {{ cancelTarget.goodsName || '商品已删除' }}</span>
+      </div>
+
+      <p class="appeal-note">
+        取消后订单标记为「已取消」，商品会自动重新上架，其他人仍可购买。
+        已完成和已取消的订单不可再取消。
+      </p>
+
+      <el-input
+          v-model="cancelReason"
+          type="textarea"
+          :rows="3"
+          maxlength="200"
+          show-word-limit
+          placeholder="请填写取消原因，如：和卖家约好时间后临时有事 / 商品成色与描述不符"
+      />
+
+      <template #footer>
+        <el-button @click="cancelDialogVisible = false">再想想</el-button>
+        <el-button type="danger" :loading="cancelSubmitting" @click="submitCancel">确认取消订单</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ==================== 交易申诉弹窗 ==================== -->
+    <el-dialog
+        v-model="appealDialogVisible"
+        title="交易申诉"
+        width="500px"
+        :close-on-click-modal="false"
+        class="appeal-dialog"
+    >
+      <div v-if="appealTarget" class="appeal-target">
+        <el-icon><Tickets /></el-icon>
+        <span>#{{ appealTarget.orderId }} · {{ appealTarget.goodsName || '商品已删除' }}</span>
+      </div>
+
+      <p class="appeal-note">
+        申诉后由平台管理员处理，同一订单你在处理完成前只能提交一次。
+      </p>
+
+      <el-form label-position="top" class="appeal-form">
+        <el-form-item label="申诉类型">
+          <el-select v-model="appealForm.reason" placeholder="请选择申诉类型" style="width: 100%">
+            <el-option v-for="r in APPEAL_REASONS" :key="r" :label="r" :value="r" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="申诉说明">
+          <el-input
+              v-model="appealForm.detail"
+              type="textarea"
+              :rows="4"
+              maxlength="500"
+              show-word-limit
+              placeholder="描述发生了什么、你希望平台怎么处理（可留空）"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="appealDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="appealSubmitting" @click="submitAppeal">提交申诉</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ==================== 我的申诉 ==================== -->
+    <el-dialog v-model="myAppealsVisible" title="我的申诉" width="620px" class="appeal-dialog">
+      <div v-if="myAppealsLoading" class="appeal-loading">正在加载申诉记录…</div>
+
+      <div v-else-if="myAppeals.length === 0" class="appeal-empty">
+        还没有提交过申诉，交易遇到问题可在订单卡片点击「交易申诉」。
+      </div>
+
+      <ul v-else class="appeal-list">
+        <li v-for="a in myAppeals" :key="a.appealId" class="appeal-item">
+          <div class="appeal-item__top">
+            <span class="appeal-item__order">#{{ a.orderId }} · {{ a.goodsName || '商品已删除' }}</span>
+            <span class="appeal-item__status" :class="`appeal-item__status--${a.status}`">
+              {{ appealStatusText(a.status) }}
+            </span>
+          </div>
+          <div class="appeal-item__reason">{{ a.reason }}</div>
+          <p v-if="a.detail" class="appeal-item__detail">{{ a.detail }}</p>
+          <div class="appeal-item__meta">
+            <span>{{ formatDateTime(a.createTime) }} 提交</span>
+            <span v-if="a.handleComment">处理意见：{{ a.handleComment }}</span>
+          </div>
+        </li>
+      </ul>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -657,7 +782,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, Refresh, Tickets, ShoppingBag, Shop, Clock, Van, Lock, Check,
   CircleCheck, CircleCheckFilled, CircleCloseFilled, Picture, View,
-  Location, School, User, StarFilled, ArrowLeft, Box
+  Location, School, User, StarFilled, ArrowLeft, Box, Warning
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
@@ -962,6 +1087,7 @@ const statusText = (status) => {
   if (s === 0) return '待交易'
   if (s === 1) return '待买家确认'
   if (s === 2) return '已完成'
+  if (s === 3) return '已取消'
   return '未知'
 }
 
@@ -970,6 +1096,7 @@ const statusClass = (status) => {
   if (s === 0) return 'pending'
   if (s === 1) return 'confirming'
   if (s === 2) return 'done'
+  if (s === 3) return 'cancelled'
   return 'unknown'
 }
 
@@ -989,6 +1116,10 @@ const cardAction = (order, statusMap = evalStatus.value) => {
   if (!order) return { kind: 'none' }
 
   const s = Number(order.orderStatus)
+
+  if (s === 3) {
+    return { kind: 'cancelled' }
+  }
 
   if (s === 2) {
     if (isBuyerOrder(order)) {
@@ -1027,15 +1158,18 @@ const TRACK_STEPS = [
 // 节点状态：品牌粉=已完成、灰蓝=进行中、灰=未开始
 const nodeState = (order, idx) => {
   const s = Number(order.orderStatus)
+  // 已取消：整条进度条回到未开始态，避免出现"已完成"的错觉
+  if (s === 3) return 'idle'
   const doneNodes = s === 0 ? 1 : (s === 1 ? 2 : 4)
   if (idx < doneNodes) return 'done'
   if (idx === doneNodes) return 'current'
   return 'idle'
 }
 
-// 进度条宽度：0 → 25% / 1 → 50% / 2 → 100%
+// 进度条宽度：0 → 25% / 1 → 50% / 2 → 100% / 3 已取消 → 0%
 const trackPercent = (order) => {
   const s = Number(order.orderStatus)
+  if (s === 3) return '0%'
   if (s === 2) return '100%'
   if (s === 1) return '50%'
   return '25%'
@@ -1053,6 +1187,15 @@ const detailSteps = computed(() => {
 
   const s = Number(order.orderStatus)
   const steps = [{ title: '下单成功', state: 'done', desc: formatDateTime(order.createTime) }]
+
+  if (s === 3) {
+    steps.push({
+      title: '订单已取消',
+      state: 'current',
+      desc: order.cancelReason ? `取消原因：${order.cancelReason}` : '该订单已取消'
+    })
+    return steps
+  }
 
   if (s === 0) {
     steps.push({ title: '等待卖家交付', state: 'current', desc: '下单后等待卖家在线下面交时交付商品' })
@@ -1233,6 +1376,134 @@ const openViewEval = async (order) => {
     }
   } catch (error) {
     // request.js 已统一提示
+  }
+}
+
+// =========================
+// 取消订单：PUT /orders/{id}/cancel { reason }
+// 仅买家/卖家、订单状态 0/1 可取消；取消后商品自动恢复在售
+// =========================
+
+const cancelDialogVisible = ref(false)
+const cancelTarget = ref(null)
+const cancelReason = ref('')
+const cancelSubmitting = ref(false)
+const cancellingId = ref(null)
+
+const openCancel = (order) => {
+  cancelTarget.value = order
+  cancelReason.value = ''
+  cancelDialogVisible.value = true
+}
+
+const submitCancel = async () => {
+  const reason = cancelReason.value.trim()
+
+  if (!reason) {
+    ElMessage.warning('请填写取消原因')
+    return
+  }
+
+  cancelSubmitting.value = true
+  cancellingId.value = cancelTarget.value?.orderId
+
+  try {
+    const result = await request.put(`/orders/${cancelTarget.value.orderId}/cancel`, { reason })
+
+    if (result === '订单已取消，商品已重新上架') {
+      ElMessage.success(result)
+      cancelDialogVisible.value = false
+      await refreshAfterAction()
+      if (detailOrder.value && Number(detailOrder.value.orderId) === Number(cancelTarget.value.orderId)) {
+        await loadDetail()
+      }
+    } else {
+      ElMessage.error(result || '取消订单失败')
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    cancelSubmitting.value = false
+    cancellingId.value = null
+  }
+}
+
+// =========================
+// 交易申诉：POST /appeals { orderId, reason, detail }
+// GET /appeals/my 查看自己的申诉与处理结果
+// =========================
+
+const APPEAL_REASONS = [
+  '商品与描述不符',
+  '卖家未按约交付',
+  '买家未按约交易',
+  '商品存在质量问题',
+  '交易过程中发生纠纷',
+  '其他问题'
+]
+
+const appealDialogVisible = ref(false)
+const appealTarget = ref(null)
+const appealSubmitting = ref(false)
+const appealForm = reactive({ reason: '', detail: '' })
+
+const myAppealsVisible = ref(false)
+const myAppeals = ref([])
+const myAppealsLoading = ref(false)
+
+const appealStatusText = (status) => {
+  const s = Number(status)
+  if (s === 1) return '已受理'
+  if (s === 2) return '已驳回'
+  return '待处理'
+}
+
+const openAppeal = (order) => {
+  appealTarget.value = order
+  appealForm.reason = ''
+  appealForm.detail = ''
+  appealDialogVisible.value = true
+}
+
+const submitAppeal = async () => {
+  if (!appealForm.reason) {
+    ElMessage.warning('请选择申诉类型')
+    return
+  }
+
+  appealSubmitting.value = true
+
+  try {
+    const result = await request.post('/appeals', {
+      orderId: Number(appealTarget.value.orderId),
+      reason: appealForm.reason,
+      detail: appealForm.detail.trim()
+    })
+
+    if (typeof result === 'string' && result.startsWith('申诉已提交')) {
+      ElMessage.success(result)
+      appealDialogVisible.value = false
+    } else {
+      ElMessage.error(result || '申诉提交失败')
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    appealSubmitting.value = false
+  }
+}
+
+const openMyAppeals = async () => {
+  myAppealsVisible.value = true
+  myAppealsLoading.value = true
+
+  try {
+    const result = await request.get('/appeals/my')
+    myAppeals.value = Array.isArray(result) ? result : []
+  } catch (error) {
+    myAppeals.value = []
+  } finally {
+    myAppealsLoading.value = false
   }
 }
 
@@ -1668,6 +1939,7 @@ watch(
 .oc-card--pending { --card-accent: #e0b775; }
 .oc-card--confirming { --card-accent: #7a9ea8; }
 .oc-card--done { --card-accent: #8fae6c; }
+.oc-card--cancelled { --card-accent: #b9aca6; }
 .oc-card--unknown { --card-accent: #c9c0bb; }
 
 .oc-card:hover {
@@ -1735,6 +2007,7 @@ watch(
 .state-chip--pending { background: rgba(224, 183, 117, 0.9); }
 .state-chip--confirming { background: rgba(122, 158, 168, 0.9); }
 .state-chip--done { background: rgba(143, 174, 108, 0.9); }
+.state-chip--cancelled { background: rgba(185, 172, 166, 0.9); }
 .state-chip--unknown { background: rgba(154, 142, 136, 0.9); }
 
 .oc-card__main {
@@ -1883,6 +2156,11 @@ watch(
 .oc-hint--done {
   color: #6f9369;
   background: rgba(143, 174, 108, 0.14);
+}
+
+.oc-hint--cancelled {
+  color: #8d7f78;
+  background: rgba(185, 172, 166, 0.16);
 }
 
 /* ==================== 分页 ==================== */
@@ -2439,6 +2717,129 @@ watch(
   background: var(--brand-bg);
   font-size: 12.5px;
   line-height: 1.65;
+  color: var(--brand-text-secondary);
+}
+
+/* ==================== 取消订单 / 交易申诉弹窗 ==================== */
+
+.appeal-dialog :deep(.el-dialog__body) {
+  padding: 0 24px 12px;
+}
+
+.appeal-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--brand-radius);
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--brand-text);
+}
+
+.appeal-target .el-icon {
+  color: var(--brand-primary);
+}
+
+.appeal-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border-left: 3px solid var(--brand-accent);
+  background: var(--brand-bg);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--brand-text-secondary);
+}
+
+.appeal-loading,
+.appeal-empty {
+  padding: 26px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+  background: var(--brand-bg-soft);
+  border-radius: var(--brand-radius);
+}
+
+.appeal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.appeal-item {
+  padding: 14px 16px;
+  border-radius: var(--brand-radius);
+  background: var(--brand-white);
+  border: 1px solid var(--brand-border);
+}
+
+.appeal-item__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.appeal-item__order {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+.appeal-item__status {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.appeal-item__status--0 {
+  color: #8a6d2b;
+  background: rgba(201, 168, 92, 0.18);
+}
+
+.appeal-item__status--1 {
+  color: #6f9369;
+  background: rgba(143, 174, 108, 0.18);
+}
+
+.appeal-item__status--2 {
+  color: #8d7f78;
+  background: rgba(185, 172, 166, 0.22);
+}
+
+.appeal-item__reason {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-primary-active);
+}
+
+.appeal-item__detail {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--brand-text-regular);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.appeal-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11.5px;
   color: var(--brand-text-secondary);
 }
 

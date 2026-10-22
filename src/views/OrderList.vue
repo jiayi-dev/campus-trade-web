@@ -661,6 +661,7 @@ const statusText = (status) => {
   if (s === 0) return '待交易'
   if (s === 1) return '待买家确认'
   if (s === 2) return '已完成'
+  if (s === 3) return '已取消'
   return '未知'
 }
 
