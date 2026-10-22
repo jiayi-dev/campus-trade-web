@@ -4,11 +4,16 @@
     真实接口（全部走后端 /chat，与商品留言 /messages 无关）：
       GET  /chat/sessions                              会话列表
       GET  /chat/history?otherUserId=&goodsId=         某会话消息历史（打开即已读）
-      POST /chat/send { toUserId, goodsId, content }   发送消息
+      POST /chat/send { toUserId, goodsId, content,
+                        messageType, relatedId }        发送消息
+        messageType：text 文本 / image 图片 / order 订单卡片
+        relatedId  ：order 消息必填（订单ID，后端校验双方归属）
       GET  /chat/unread                                未读总数
       GET  /chat/contacts                              联系人候选（由真实订单聚合）
+      POST /upload/image                               图片上传（复用发布向导同一接口）
     说明：不使用任何假数据；后端 chat_message 表未创建时（/chat/sessions 返回 500），
          页面顶部给出"需先执行 sql/v1.2-chat.sql"的明确提示，绝不伪造会话或发送成功。
+         图片/订单消息还需执行 sql/v1.2-chat-media.sql 增加 message_type/related_id 字段。
   -->
   <div class="mc-page">
 
@@ -16,7 +21,8 @@
     <div v-if="dbNotReady" class="mc-warning">
       <el-icon class="mc-warning__icon"><WarningFilled /></el-icon>
       <div class="mc-warning__text">
-        消息模块需要数据库准备：请先手动执行 campus-trade/sql/v1.2-chat.sql 建表后再使用。
+        消息模块需要数据库准备：请先手动执行 campus-trade/sql/v1.2-chat.sql 建表，
+        以及 sql/v1.2-chat-media.sql（图片/订单消息字段）后再使用。
       </div>
       <el-button size="small" plain @click="reloadAll">我已执行，重试</el-button>
     </div>
@@ -82,7 +88,7 @@
                   <span class="mc-session__time">{{ formatRelativeTime(s.lastTime) }}</span>
                 </div>
                 <div class="mc-session__bottom">
-                  <span class="mc-session__msg">{{ s.lastContent || '' }}</span>
+                  <span class="mc-session__msg">{{ sessionPreview(s) }}</span>
                   <span v-if="Number(s.unread) > 0" class="mc-session__badge">
                     {{ Number(s.unread) > 99 ? '99+' : s.unread }}
                   </span>
@@ -183,7 +189,45 @@
                     class="mc-msg"
                     :class="{ 'mc-msg--mine': msg.mine }"
                 >
-                  <div class="mc-msg__bubble">{{ msg.content }}</div>
+                  <div
+                      class="mc-msg__bubble"
+                      :class="{ 'mc-msg__bubble--media': msg.messageType === 'image' || msg.messageType === 'order' }"
+                  >
+                    <!-- 图片消息 -->
+                    <el-image
+                        v-if="msg.messageType === 'image'"
+                        class="mc-msg__image"
+                        :src="resolveImageUrl(msg.content)"
+                        :preview-src-list="[resolveImageUrl(msg.content)]"
+                        preview-teleported
+                        fit="cover"
+                        alt="图片消息"
+                    />
+
+                    <!-- 订单卡片：数据来自 /chat/history 的订单联查 -->
+                    <div
+                        v-else-if="msg.messageType === 'order'"
+                        class="mc-order"
+                        @click="goOrder(msg.relatedId)"
+                    >
+                      <div class="mc-order__head">
+                        <el-icon><Tickets /></el-icon>
+                        <span>订单 #{{ msg.relatedId }}</span>
+                        <span class="mc-order__status">{{ orderStatusText(msg.orderStatus) }}</span>
+                      </div>
+                      <div class="mc-order__name">{{ msg.orderGoodsName || '商品已删除' }}</div>
+                      <div class="mc-order__meta">
+                        <span class="mc-order__price">{{ formatPrice(msg.orderPrice) }}</span>
+                        <span class="mc-order__parties">
+                          {{ msg.orderBuyerName || '买家' }} → {{ msg.orderSellerName || '卖家' }}
+                        </span>
+                      </div>
+                      <div class="mc-order__hint">查看订单详情 →</div>
+                    </div>
+
+                    <!-- 文本消息 -->
+                    <template v-else>{{ msg.content }}</template>
+                  </div>
                   <div class="mc-msg__time">{{ hhmm(msg.createTime) }}</div>
                 </div>
               </template>
@@ -198,22 +242,41 @@
 
           <!-- 输入区 -->
           <footer class="mc-input">
-            <textarea
-                v-model="draft"
-                class="mc-input__field"
-                rows="2"
-                maxlength="500"
-                placeholder="输入消息，Enter 发送，Shift + Enter 换行"
-                @keydown="onKeydown"
-            ></textarea>
-            <el-button
-                type="primary"
-                class="mc-input__send"
-                :icon="Promotion"
-                :loading="sending"
-                :disabled="sending"
-                @click="send"
-            >发送</el-button>
+            <div class="mc-input__tools">
+              <el-upload
+                  :show-file-list="false"
+                  :http-request="uploadChatImage"
+                  accept="image/*"
+                  :disabled="sending"
+              >
+                <button type="button" class="mc-tool-btn" :disabled="sending">
+                  <el-icon><Picture /></el-icon> 发送图片
+                </button>
+              </el-upload>
+              <button type="button" class="mc-tool-btn" :disabled="sending" @click="openOrderPicker">
+                <el-icon><Tickets /></el-icon> 发送订单
+              </button>
+              <span class="mc-input__hint">图片与订单均为真实消息，发送后写入会话记录</span>
+            </div>
+
+            <div class="mc-input__row">
+              <textarea
+                  v-model="draft"
+                  class="mc-input__field"
+                  rows="2"
+                  maxlength="500"
+                  placeholder="输入消息，Enter 发送，Shift + Enter 换行"
+                  @keydown="onKeydown"
+              ></textarea>
+              <el-button
+                  type="primary"
+                  class="mc-input__send"
+                  :icon="Promotion"
+                  :loading="sending"
+                  :disabled="sending"
+                  @click="send"
+              >发送</el-button>
+            </div>
           </footer>
         </template>
       </section>
@@ -271,6 +334,58 @@
       </div>
     </el-dialog>
 
+    <!-- ============ 发送订单：只列出与当前会话对方相关的真实订单 ============ -->
+    <el-dialog
+        v-model="orderPickerVisible"
+        title="发送订单"
+        width="520px"
+        class="mc-order-dialog"
+    >
+      <p class="mc-contact-tip">
+        只显示你与「{{ active ? (active.otherUserName || '对方') : '对方' }}」之间的订单，由后端校验双方归属。
+      </p>
+
+      <div v-if="orderPickerLoading" class="mc-contact-loading">
+        <el-icon class="mc-messages__loading-icon"><Loading /></el-icon>
+        正在加载订单…
+      </div>
+
+      <div v-else-if="pickerOrders.length === 0" class="mc-contact-empty">
+        <el-icon class="mc-empty__icon"><Tickets /></el-icon>
+        <p class="mc-empty__title">没有可发送的订单</p>
+        <p class="mc-empty__desc">你与该同学之间还没有产生订单。</p>
+      </div>
+
+      <div v-else class="mc-order-list">
+        <button
+            v-for="o in pickerOrders"
+            :key="o.orderId"
+            class="mc-order-item"
+            @click="sendOrder(o)"
+        >
+          <div class="mc-order-item__thumb">
+            <img
+                v-if="o.imageUrl"
+                :src="resolveImageUrl(o.imageUrl)"
+                alt="商品图"
+                @error="o.imageUrl = ''"
+            >
+            <el-icon v-else><Picture /></el-icon>
+          </div>
+          <div class="mc-order-item__info">
+            <div class="mc-order-item__top">
+              <span class="mc-order-item__name">{{ o.goodsName || '商品已删除' }}</span>
+              <span class="mc-order-item__role">{{ o.role }}</span>
+            </div>
+            <div class="mc-order-item__meta">
+              订单 #{{ o.orderId }} · {{ formatPrice(o.price) }} · {{ orderStatusText(o.orderStatus) }}
+            </div>
+          </div>
+          <el-icon class="mc-order-item__arrow"><Promotion /></el-icon>
+        </button>
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -281,7 +396,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Search, CirclePlus, ChatDotRound, ChatLineRound,
-  Picture, Promotion, Loading, WarningFilled
+  Picture, Promotion, Loading, WarningFilled, Tickets
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatRelativeTime, formatPrice } from '../utils/format'
@@ -312,6 +427,11 @@ const sending = ref(false)
 const contactVisible = ref(false)
 const contacts = ref([])
 const contactsLoading = ref(false)
+
+// 发送订单卡片
+const orderPickerVisible = ref(false)
+const orderPickerLoading = ref(false)
+const pickerOrders = ref([])
 
 // =========================
 // 工具
@@ -362,6 +482,19 @@ const filteredSessions = computed(() => {
       String(s.lastContent || '').toLowerCase().includes(kw)
   )
 })
+
+// 会话列表最后一条消息的预览文案（图片/订单不展示原始 URL）
+const sessionPreview = (s) => {
+  if (s.lastType === 'image') return '[图片]'
+  if (s.lastType === 'order') return '[订单卡片]'
+  return s.lastContent || ''
+}
+
+// 订单状态口径与后端一致：0 待交易 / 1 待买家确认 / 2 已完成 / 3 已取消
+const orderStatusText = (status) => {
+  const map = { 0: '待交易', 1: '待买家确认', 2: '已完成', 3: '已取消' }
+  return map[Number(status)] || '状态未知'
+}
 
 const messageGroups = computed(() => {
   const groups = []
@@ -490,15 +623,9 @@ const openContact = async (c) => {
 // =========================
 // 发送
 // =========================
-const send = async () => {
-  if (!active.value) return
-
-  const text = draft.value.trim()
-
-  if (!text) {
-    ElMessage.warning('请输入消息内容')
-    return
-  }
+// 统一发送入口：文本 / 图片 / 订单卡片共用同一后端接口与刷新逻辑
+const postMessage = async ({ content, messageType = 'text', relatedId = null }) => {
+  if (!active.value) return false
 
   sending.value = true
 
@@ -506,24 +633,125 @@ const send = async () => {
     const result = await request.post('/chat/send', {
       toUserId: active.value.otherUserId,
       goodsId: active.value.goodsId == null ? null : active.value.goodsId,
-      content: text
+      content,
+      messageType,
+      relatedId
     })
 
     if (result === '发送成功') {
-      draft.value = ''
       // 刷新该会话消息 + 会话列表（新会话会出现在列表，且该会话被置顶）
       await loadHistory()
       await loadSessions()
       refreshUnread()
-    } else {
-      // 业务失败：保留输入内容，给出明确反馈
-      ElMessage.error(result || '发送失败')
+      return true
     }
+
+    // 业务失败：保留输入内容，给出明确反馈
+    ElMessage.error(result || '发送失败')
+    return false
   } catch (error) {
     // request.js 已统一提示；保留输入内容便于重试
+    return false
   } finally {
     sending.value = false
   }
+}
+
+const send = async () => {
+  const text = draft.value.trim()
+
+  if (!text) {
+    ElMessage.warning('请输入消息内容')
+    return
+  }
+
+  const ok = await postMessage({ content: text, messageType: 'text' })
+
+  if (ok) draft.value = ''
+}
+
+// =========================
+// 图片消息：复用发布向导的 /upload/image 接口，上传成功后发送图片消息
+// =========================
+const uploadChatImage = async ({ file }) => {
+  if (!active.value || sending.value) return
+
+  if (!file || !String(file.type || '').startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('图片大小不能超过 5MB')
+    return
+  }
+
+  sending.value = true
+
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await request.post('/upload/image', form)
+
+    if (res && res.url) {
+      await postMessage({ content: res.url, messageType: 'image' })
+    } else {
+      ElMessage.error((res && res.error) || '图片上传失败')
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    sending.value = false
+  }
+}
+
+// =========================
+// 订单卡片：只列出当前用户与对方之间的真实订单
+// =========================
+const openOrderPicker = () => {
+  if (!active.value) return
+  orderPickerVisible.value = true
+  loadOrdersForPicker()
+}
+
+const loadOrdersForPicker = async () => {
+  orderPickerLoading.value = true
+
+  try {
+    const [bought, sold] = await Promise.all([
+      request.get('/orders/buyer').catch(() => []),
+      request.get('/orders/seller').catch(() => [])
+    ])
+
+    const otherId = Number(active.value.otherUserId)
+    const list = []
+
+    ;(Array.isArray(bought) ? bought : []).forEach(o => {
+      if (Number(o.sellerId) === otherId) list.push({ ...o, role: '我买入' })
+    })
+
+    ;(Array.isArray(sold) ? sold : []).forEach(o => {
+      if (Number(o.buyerId) === otherId) list.push({ ...o, role: '我卖出' })
+    })
+
+    list.sort((a, b) => Number(b.orderId) - Number(a.orderId))
+    pickerOrders.value = list
+  } finally {
+    orderPickerLoading.value = false
+  }
+}
+
+const sendOrder = async (order) => {
+  orderPickerVisible.value = false
+  await postMessage({
+    content: `订单 #${order.orderId}`,
+    messageType: 'order',
+    relatedId: order.orderId
+  })
+}
+
+const goOrder = (orderId) => {
+  if (orderId != null) router.push(`/orders/center/${orderId}`)
 }
 
 const onKeydown = (e) => {
@@ -1113,6 +1341,102 @@ onMounted(() => {
   color: #fff;
 }
 
+/* 图片 / 订单卡片气泡：去掉文本内边距，交给内容自身控制 */
+.mc-msg__bubble--media {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.mc-msg--mine .mc-msg__bubble--media {
+  background: transparent;
+  border: none;
+}
+
+.mc-msg__image {
+  display: block;
+  width: 168px;
+  height: 168px;
+  border-radius: 12px;
+  border: 1px solid var(--brand-border);
+  cursor: zoom-in;
+  box-shadow: var(--brand-shadow-sm);
+}
+
+/* 订单卡片 */
+.mc-order {
+  width: 232px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--brand-bg-soft);
+  border: 1px solid var(--brand-border);
+  border-left: 3px solid var(--brand-accent);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mc-order:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--brand-shadow-md);
+}
+
+.mc-order__head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--brand-text-secondary);
+}
+
+.mc-order__status {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(216, 168, 173, 0.18);
+  color: var(--brand-primary-deep, #b3807f);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.mc-order__name {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-order__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--brand-text-secondary);
+}
+
+.mc-order__price {
+  font-weight: 700;
+  color: var(--brand-accent-deep, #a8873d);
+}
+
+.mc-order__parties {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-order__hint {
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--brand-primary);
+}
+
 .mc-msg__time {
   font-size: 10.5px;
   color: var(--brand-text-secondary);
@@ -1129,11 +1453,55 @@ onMounted(() => {
 .mc-input {
   flex-shrink: 0;
   border-top: 1px solid var(--brand-border);
-  padding: 12px 14px;
+  padding: 10px 14px 12px;
   display: flex;
-  gap: 10px;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
   background: var(--brand-white);
+}
+
+.mc-input__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-input__hint {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--brand-text-secondary);
+}
+
+.mc-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+  background: var(--brand-bg-soft);
+  color: var(--brand-text-secondary);
+  font-family: var(--brand-font);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.mc-tool-btn:hover:not(:disabled) {
+  color: var(--brand-primary);
+  border-color: var(--brand-primary);
+  background: #fff;
+}
+
+.mc-tool-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mc-input__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
 }
 
 .mc-input__field {
@@ -1266,6 +1634,101 @@ onMounted(() => {
 }
 
 .mc-contact__arrow {
+  font-size: 18px;
+  color: var(--brand-primary);
+  flex-shrink: 0;
+}
+
+/* ========== 发送订单弹窗 ========== */
+
+.mc-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.mc-order-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--brand-radius);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.mc-order-item:hover {
+  border-color: var(--brand-accent);
+  background: var(--brand-bg-soft);
+  transform: translateX(2px);
+}
+
+.mc-order-item__thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--brand-bg-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-accent);
+  font-size: 20px;
+}
+
+.mc-order-item__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mc-order-item__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mc-order-item__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-order-item__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--brand-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-order-item__role {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(201, 168, 92, 0.16);
+  color: var(--brand-accent-deep, #a8873d);
+  font-size: 10.5px;
+}
+
+.mc-order-item__meta {
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+}
+
+.mc-order-item__arrow {
   font-size: 18px;
   color: var(--brand-primary);
   flex-shrink: 0;
