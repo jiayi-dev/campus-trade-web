@@ -244,7 +244,7 @@
             v-else-if="activeTab === 'seller' && statusFilter === 'all'"
             type="primary"
             round
-            @click="$router.push('/publish')"
+            @click="$router.push('/goods/publish')"
         >去发布</el-button>
       </div>
     </div>

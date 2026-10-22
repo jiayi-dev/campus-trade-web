@@ -309,7 +309,7 @@
                     v-else-if="activeView === 'seller' && statusFilter === 'all' && !keyword"
                     type="primary"
                     round
-                    @click="router.push('/publish')"
+                    @click="router.push('/goods/publish')"
                 >发布一件闲置</el-button>
                 <el-button v-else round @click="resetFilters">查看全部订单</el-button>
               </div>

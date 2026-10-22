@@ -505,7 +505,7 @@ const loadReputation = async (userId) => {
 const growthItems = computed(() => [
   {
     key: 'goodsCount', label: '商品成长值', icon: Goods, theme: 'pink',
-    hint: '我发布的商品', percent: Math.min((overview.value.goodsCount || 0) * 20, 100), to: '/publish'
+    hint: '我发布的商品', percent: Math.min((overview.value.goodsCount || 0) * 20, 100), to: '/goods/publish'
   },
   {
     key: 'completedOrderCount', label: '完成交易', icon: CircleCheckFilled, theme: 'gold',
@@ -532,7 +532,7 @@ const timelineNodes = computed(() => {
     },
     {
       key: 'firstGoods', title: '第一次发布商品', icon: Goods, theme: 'gold',
-      time: m.firstGoodsTime, emptyText: '还没有发布过商品，去发布第一件闲置', to: '/publish'
+      time: m.firstGoodsTime, emptyText: '还没有发布过商品，去发布第一件闲置', to: '/goods/publish'
     },
     {
       key: 'firstOrder', title: '完成第一笔交易', icon: Tickets, theme: 'blue',
@@ -550,7 +550,7 @@ const timelineNodes = computed(() => {
 const quickApps = computed(() => [
   { name: '交易中心', desc: '买入订单与进度', icon: Tickets, theme: 'pink', to: '/orders' },
   { name: '商品市场', desc: '发现校园好物', icon: ShoppingBag, theme: 'gold', to: '/goods' },
-  { name: '发布商品', desc: '上架我的闲置', icon: CirclePlus, theme: 'blue', to: '/publish' },
+  { name: '发布商品', desc: '上架我的闲置', icon: CirclePlus, theme: 'blue', to: '/goods/publish' },
   {
     name: '卖家中心', desc: '店铺与申请', icon: Shop, theme: 'pink',
     to: profile.value.role === 'seller' ? '/seller' : '/seller-apply'

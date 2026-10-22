@@ -1020,12 +1020,12 @@ const form = ref({
 
 
 // =========================
-// 点击"发布商品"：统一跳转到 /publish 发布工作台
-// （原弹窗发布已升级为独立页面；本页仅保留编辑弹窗与批量发布）
+// 点击"发布商品"：统一跳转到 /goods/publish 四步发布向导
+// （/publish 已转为编辑专用；本页仅保留编辑弹窗与批量发布）
 // =========================
 
 const goPublish = () => {
-  router.push('/publish')
+  router.push('/goods/publish')
 }
 
 

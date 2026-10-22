@@ -256,18 +256,12 @@ const menus = [
     icon: ChatDotRound
   },
   {
-    // 发布工作台：seller 直接发布；student 进入引导页（成为卖家漏斗入口）
+    // 发布商品：唯一新建入口（四步创作向导）
+    // /publish 已转为「编辑商品」专用，不再作为新建菜单入口，避免功能重复
     name: '发布商品',
-    path: '/publish',
-    roles: ['student', 'seller'],
-    icon: CirclePlus
-  },
-  {
-    // 发布向导：分步创作流（/publish 为单页工作台，此处为四步向导）
-    name: '发布向导',
     path: '/goods/publish',
     roles: ['student', 'seller'],
-    icon: Collection
+    icon: CirclePlus
   },
   {
     name: '成为卖家',

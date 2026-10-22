@@ -76,12 +76,12 @@ const router = createRouter({
           meta: { title: '交易安全中心', public: true }
         },
         {
-          // 商品发布向导：分步创作流（与 /publish 单页工作台并存）
+          // 商品发布：唯一新建入口（四步创作流）
           // 静态段 goods/publish 的匹配优先级高于动态段 goods/:id，不会被详情页抢占
           path: 'goods/publish',
           component: () => import('../views/GoodsPublishWizard.vue'),
           meta: {
-            title: '发布向导',
+            title: '发布商品',
             requireAuth: true,
             roles: ['student', 'seller']
           }
@@ -153,10 +153,11 @@ const router = createRouter({
           }
         },
         {
+          // 编辑商品专用（/publish?id=N）；无 id 访问会自动跳转到 /goods/publish 向导
           path: 'publish',
           component: () => import('../views/Publish.vue'),
           meta: {
-            title: '发布商品',
+            title: '编辑商品',
             requireAuth: true,
             roles: ['student', 'seller']
           }

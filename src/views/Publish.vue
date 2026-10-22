@@ -1,14 +1,14 @@
 <template>
   <!--
-    /publish 我的商品发布工作台（一页一成品，create / edit 双模式复用）
+    /publish 商品编辑工作台（编辑专用；新建统一走 /goods/publish 四步向导）
     角色分流：
-    - seller：完整发布工作台（Hero + 表单 + 实时预览 + 操作条 + 成功反馈）
+    - seller：完整编辑工作台（Hero + 表单 + 实时预览 + 操作条 + 成功反馈）
     - student：引导面板（成为卖家后即可发布，跳 /seller-apply）
-    双模式：
-    - 新建 /publish        ：POST /goods 创建 → POST /goods/{id}/images 关联图片
+    模式：
     - 编辑 /publish?id=26  ：GET /goods/{id} + GET /goods/{id}/images 回填
                             → PUT /goods 更新 → POST /goods/{id}/images 全量替换图片
                             （后端 checkOwnership 真实拦截越权，前端仅做体验层校验）
+    - 无 id 访问 /publish  ：自动重定向到 /goods/publish，避免两个新建入口并存
     真实业务链路：
       图片：选择 → POST /upload/image（multipart）→ 返回 URL（暂存于 file-list）
       商品：POST /goods（JSON，seller 身份由后端 AuthContext 认定）→ 文本返回商品ID
@@ -853,17 +853,19 @@ const goSeller = () => router.push('/seller')
 const goSellerApply = () => router.push('/seller-apply')
 
 onMounted(async () => {
+  // 新建商品统一走 /goods/publish 四步向导，本页只保留「编辑商品」职责，
+  // 直接访问 /publish（无 id）时重定向到向导，避免两个新建入口并存
+  if (!isEditMode.value) {
+    router.replace('/goods/publish')
+    return
+  }
+
   window.addEventListener('role-changed', handleRoleChanged)
   loadCategories()
   loadCampuses()
 
   // 编辑模式：回填数据库中的商品，与本地草稿是两个互不干扰的场景
-  if (isEditMode.value) {
-    await loadEditGoods()
-    return
-  }
-
-  await restoreDraftIfAny()
+  await loadEditGoods()
 })
 
 onBeforeUnmount(() => {
