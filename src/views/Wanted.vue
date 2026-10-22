@@ -10,12 +10,14 @@
       POST /wanted                 发布求购
       PUT  /wanted                 更新求购（仅本人）
       PUT  /wanted/{id}/status     关闭求购（status=2，仅本人）
-      GET  /wanted/{id}/responses  响应列表
-      POST /wanted/{id}/responses  提交响应
+      GET  /wanted/{id}/responses  报价列表（含金额与状态）
+      POST /wanted/{id}/responses  提交报价 { message, price }，同一人可多次报价
+      PUT  /wanted/{id}/responses/{responseId}/accept  选定报价（仅本人，选定后求购关闭）
       GET  /categories             分类字典
       GET  /home/overview          真实校区列表（campuses）
 
     注意：求购接口依赖数据库表，需先手动执行 campus-trade/sql/v1.2-wanted.sql；
+          多条报价还需执行 campus-trade/sql/v1.2-wanted-quotes.sql（去唯一键 + 报价金额/状态）；
           接口失败时页面会给出明确的服务端未就绪横幅，不做假数据兜底。
   -->
   <div class="wanted-page">
@@ -243,7 +245,7 @@
           <div class="note__foot">
             <span class="note__responses">
               <el-icon><ChatDotRound /></el-icon>
-              <span class="is-num">{{ w.responseCount ?? 0 }}</span> 人响应
+              <span class="is-num">{{ w.responseCount ?? 0 }}</span> 人报价
             </span>
             <div class="note__ops">
               <el-button
@@ -252,7 +254,7 @@
                   type="primary"
                   round
                   @click="goDetail(w.wantedId, true)"
-              >我要响应</el-button>
+              >我要报价</el-button>
               <span v-else-if="w.userId === currentUserId" class="note__own">你发布的</span>
               <el-button size="small" round @click="goDetail(w.wantedId)">查看详情</el-button>
             </div>
@@ -348,42 +350,69 @@
               <el-icon><Location /></el-icon>{{ detailWanted.campus }}
             </span>
             <span class="tag tag--count">
-              <el-icon><ChatDotRound /></el-icon><span class="is-num">{{ detailWanted.responseCount ?? responses.length }}</span> 人响应
+              <el-icon><ChatDotRound /></el-icon><span class="is-num">{{ detailWanted.responseCount ?? responses.length }}</span> 人报价
             </span>
           </div>
 
           <section class="archive__panel">
             <h2 class="panel__title">需求说明</h2>
             <p v-if="detailWanted.description" class="panel__text">{{ detailWanted.description }}</p>
-            <p v-else class="panel__text panel__text--empty">需求方没有填写更多说明，可以通过下方响应进一步沟通。</p>
+            <p v-else class="panel__text panel__text--empty">需求方没有填写更多说明，可以通过下方报价进一步沟通。</p>
           </section>
 
-          <!-- 响应留言板 -->
+          <!-- 报价板 -->
           <section class="archive__panel">
-            <h2 class="panel__title">响应留言板</h2>
+            <h2 class="panel__title">
+              报价板
+              <span class="panel__hint">同一人可多次报价，由你择优选定</span>
+            </h2>
 
             <div v-if="responsesLoading" class="resp-loading">
               <div v-for="n in 2" :key="n" class="sk-line"></div>
             </div>
 
             <div v-else-if="responsesError" class="resp-error">
-              <span>响应加载失败</span>
+              <span>报价加载失败</span>
               <el-button size="small" round @click="loadResponses">重试</el-button>
             </div>
 
             <div v-else-if="responses.length === 0" class="resp-empty">
-              还没有人响应，快来做第一个吧
+              还没有人报价，快来做第一个吧
             </div>
 
             <ul v-else class="resp-list">
-              <li v-for="r in responses" :key="r.responseId" class="resp">
+              <li
+                  v-for="r in responses"
+                  :key="r.responseId"
+                  class="resp"
+                  :class="{ 'resp--win': Number(r.status) === 1, 'resp--lose': Number(r.status) === 2 }"
+              >
                 <span class="resp__avatar">{{ (r.username || '同').charAt(0).toUpperCase() }}</span>
                 <div class="resp__body">
                   <div class="resp__meta">
                     <span class="resp__name">{{ r.username || '匿名同学' }}</span>
                     <span class="resp__time">{{ formatRelativeTime(r.createTime) }}</span>
+                    <span
+                        class="resp__badge"
+                        :class="{ 'resp__badge--win': Number(r.status) === 1, 'resp__badge--lose': Number(r.status) === 2 }"
+                    >{{ quoteStatusText(r.status) }}</span>
                   </div>
                   <p class="resp__msg">{{ r.message }}</p>
+                  <div class="resp__foot">
+                    <span class="resp__price">
+                      <span class="resp__price-label">报价</span>
+                      <span class="is-num">{{ r.price == null ? '面议' : formatPrice(r.price) }}</span>
+                    </span>
+                    <el-button
+                        v-if="isOwn && !isClosed && (r.status == null || Number(r.status) === 0)"
+                        size="small"
+                        type="primary"
+                        plain
+                        round
+                        :loading="acceptingId === r.responseId"
+                        @click="acceptQuote(r)"
+                    >选定此报价</el-button>
+                  </div>
                 </div>
               </li>
             </ul>
@@ -415,11 +444,25 @@
             </template>
 
             <div v-else-if="isClosed" class="closed-hint">
-              <el-icon><Lock /></el-icon>该求购已关闭，无法再提交响应
+              <el-icon><Lock /></el-icon>该求购已关闭，无法再提交报价
             </div>
 
             <template v-else>
-              <h2 class="panel__title">我要响应</h2>
+              <h2 class="panel__title">我要报价</h2>
+              <div class="composer__price">
+                <span class="composer__price-label">我的报价</span>
+                <el-input-number
+                    v-model="responsePrice"
+                    :min="0"
+                    :max="999999"
+                    :precision="2"
+                    :step="10"
+                    controls-position="right"
+                    placeholder="面议可留空"
+                    class="composer__price-input"
+                />
+                <span class="composer__price-unit">元 · 不填表示面议</span>
+              </div>
               <el-input
                   ref="responseInputRef"
                   v-model="responseText"
@@ -430,12 +473,13 @@
                   placeholder="说说你手里有什么、成色如何、方便在哪里面交…"
               />
               <div class="composer__foot">
+                <span class="composer__hint">可以多次报价，需求方会从中选定一条</span>
                 <el-button
                     type="primary"
                     round
                     :loading="responseSubmitting"
                     @click="submitResponse"
-                >提交响应</el-button>
+                >提交报价</el-button>
               </div>
             </template>
           </section>
@@ -652,8 +696,10 @@ const responsesLoading = ref(false)
 const responsesError = ref(false)
 
 const responseText = ref('')
+const responsePrice = ref(null)
 const responseSubmitting = ref(false)
 const responseInputRef = ref(null)
+const acceptingId = ref(null)
 const closing = ref(false)
 
 const isOwn = computed(() => !!detailWanted.value && Number(detailWanted.value.userId) === currentUserId)
@@ -737,6 +783,7 @@ const loadDetail = async () => {
   detailError.value = false
   detailNotFound.value = false
   responseText.value = ''
+  responsePrice.value = null
 
   const id = route.params.wantedId
 
@@ -1005,21 +1052,25 @@ const submitForm = async () => {
 const submitResponse = async () => {
   const message = responseText.value.trim()
   if (!message) {
-    ElMessage.warning('请先写下你的响应内容')
+    ElMessage.warning('请先写下你的报价说明')
     return
   }
 
   responseSubmitting.value = true
 
   try {
-    const result = await request.post(`/wanted/${route.params.wantedId}/responses`, { message })
+    const result = await request.post(`/wanted/${route.params.wantedId}/responses`, {
+      message,
+      price: responsePrice.value
+    })
 
-    if (result === '响应已提交') {
+    if (result === '报价已提交') {
       ElMessage.success(result)
       responseText.value = ''
+      responsePrice.value = null
       await Promise.all([loadResponses(), refreshDetailSilently()])
     } else {
-      ElMessage.error(result || '响应提交失败')
+      ElMessage.error(result || '报价提交失败')
     }
   } catch (error) {
     // request.js 已统一提示
@@ -1028,10 +1079,55 @@ const submitResponse = async () => {
   }
 }
 
+// 报价状态文案：后端 0 待选 / 1 已选定 / 2 未入选
+const quoteStatusText = (status) => {
+  const s = Number(status)
+  if (s === 1) return '已选定'
+  if (s === 2) return '未入选'
+  return '待选'
+}
+
+// 需求方选定某条报价：选定后该求购关闭，其余报价自动变为未入选
+const acceptQuote = async (quote) => {
+  try {
+    await ElMessageBox.confirm(
+        `选定「${quote.username || '该同学'}」的报价后，本条求购将关闭，其余报价自动标记为未入选。确定选定吗？`,
+        '选定报价',
+        {
+          confirmButtonText: '确定选定',
+          cancelButtonText: '再看看',
+          type: 'warning'
+        }
+    )
+  } catch (error) {
+    return
+  }
+
+  acceptingId.value = quote.responseId
+
+  try {
+    const result = await request.put(
+        `/wanted/${route.params.wantedId}/responses/${quote.responseId}/accept`
+    )
+
+    if (result === '已选定该报价，求购已关闭') {
+      ElMessage.success(result)
+      await Promise.all([loadResponses(), refreshDetailSilently()])
+      await loadActiveTotalSilent()
+    } else {
+      ElMessage.error(result || '选定报价失败')
+    }
+  } catch (error) {
+    // request.js 已统一提示
+  } finally {
+    acceptingId.value = null
+  }
+}
+
 const handleClose = async () => {
   try {
     await ElMessageBox.confirm(
-        '关闭后该求购将从需求广场下架，且不再接受新的响应。确定关闭吗？',
+        '关闭后该求购将从需求广场下架，且不再接受新的报价。确定关闭吗？',
         '关闭求购',
         {
           confirmButtonText: '确定关闭',
@@ -1858,6 +1954,13 @@ onBeforeUnmount(() => {
   border-left: 3px solid var(--brand-primary);
 }
 
+.panel__hint {
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--brand-text-secondary);
+}
+
 .panel__text {
   margin: 0;
   font-size: 14.5px;
@@ -1871,7 +1974,7 @@ onBeforeUnmount(() => {
   color: var(--brand-text-secondary);
 }
 
-/* 响应留言板 */
+/* 响应留言板（报价板） */
 .resp-list {
   list-style: none;
   margin: 0;
@@ -1888,6 +1991,19 @@ onBeforeUnmount(() => {
   border-radius: var(--brand-radius-lg) 4px var(--brand-radius-lg) var(--brand-radius-lg);
   background: var(--brand-bg);
   border: 1px dashed var(--brand-border);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+/* 已选定：实线描边 + 奶杏底，视觉上明确胜出 */
+.resp--win {
+  border-style: solid;
+  border-color: var(--brand-accent);
+  background: var(--brand-bg-soft);
+}
+
+/* 未入选：整体降透明度，避免与待选报价混淆 */
+.resp--lose {
+  opacity: 0.62;
 }
 
 .resp__body {
@@ -1897,9 +2013,10 @@ onBeforeUnmount(() => {
 
 .resp__meta {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+  flex-wrap: wrap;
 }
 
 .resp__name {
@@ -1913,6 +2030,29 @@ onBeforeUnmount(() => {
   color: var(--brand-text-secondary);
 }
 
+.resp__badge {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--brand-text-secondary);
+  background: var(--brand-bg-soft);
+  border: 1px solid var(--brand-border);
+}
+
+.resp__badge--win {
+  color: #7a5f22;
+  background: rgba(201, 168, 92, 0.16);
+  border-color: rgba(201, 168, 92, 0.5);
+}
+
+.resp__badge--lose {
+  color: var(--brand-aux);
+  background: transparent;
+}
+
 .resp__msg {
   margin: 0;
   font-size: 13.5px;
@@ -1920,6 +2060,31 @@ onBeforeUnmount(() => {
   color: var(--brand-text-regular);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.resp__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--brand-border);
+}
+
+.resp__price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--brand-accent);
+}
+
+.resp__price-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--brand-text-secondary);
 }
 
 .resp-empty,
@@ -1941,8 +2106,39 @@ onBeforeUnmount(() => {
 /* 响应 / 本人操作 */
 .composer__foot {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 12px;
   margin-top: 12px;
+}
+
+.composer__hint {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+}
+
+.composer__price {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.composer__price-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text);
+}
+
+.composer__price-input {
+  width: 170px;
+}
+
+.composer__price-unit {
+  font-size: 12px;
+  color: var(--brand-text-secondary);
 }
 
 .own-panel {
