@@ -47,20 +47,11 @@
         </div>
       </div>
 
-      <!-- 刊头拼贴装饰（真实生成图） -->
-      <div class="masthead__collage">
-        <img
-            class="masthead__collage-img masthead__collage-img--a"
-            :src="mastheadImages.a"
-            alt="校园集市拼贴"
-            @error="onImgError('mastheadA')"
-        />
-        <img
-            class="masthead__collage-img masthead__collage-img--b"
-            :src="mastheadImages.b"
-            alt="校园闲置好物"
-            @error="onImgError('mastheadB')"
-        />
+      <!-- 刊头装饰：纯 CSS 漂浮色块 + 圆点 -->
+      <div class="masthead__decor" aria-hidden="true">
+        <span class="masthead__blob masthead__blob--violet"></span>
+        <span class="masthead__blob masthead__blob--coral"></span>
+        <span class="masthead__dots"></span>
       </div>
     </header>
 
@@ -174,10 +165,17 @@
         :key="theme.key"
         class="theme-section reveal"
         :class="[`theme-section--${theme.tone}`, { 'is-active': activeTheme === theme.key }]"
+        :style="themeVars(theme)"
     >
       <!-- 专题头图 + 编辑文案 -->
       <div class="theme-hero">
         <div class="theme-hero__media">
+          <!-- 底层装饰：图片缺失时仍然有主题色渐变 + 光斑几何，不出现破图 -->
+          <div class="theme-hero__decor" aria-hidden="true">
+            <span class="theme-hero__orb theme-hero__orb--a"></span>
+            <span class="theme-hero__orb theme-hero__orb--b"></span>
+            <span class="theme-hero__ring"></span>
+          </div>
           <img
               v-if="!heroImgError[theme.key]"
               :src="theme.image"
@@ -186,11 +184,9 @@
               loading="lazy"
               @error="onImgError(theme.key)"
           />
-          <div v-else class="theme-hero__img-fallback">
-            <el-icon><Picture /></el-icon>
-            <span>{{ theme.title }}</span>
-          </div>
-          <div class="theme-hero__glow"></div>
+          <!-- 主题色蒙版：让六张实拍海报色调各异 -->
+          <div class="theme-hero__mask" aria-hidden="true"></div>
+          <div class="theme-hero__glow" aria-hidden="true"></div>
           <span class="theme-hero__no">NO.{{ String(index + 1).padStart(2, '0') }}</span>
         </div>
 
@@ -236,26 +232,29 @@
       </div>
 
       <!-- 商品区：空态（绝不虚构商品） -->
-      <div v-else-if="theme.list.length === 0" class="state-block state-block--empty">
-        <el-icon class="state-block__icon"><Collection /></el-icon>
-        <p class="state-block__text">该专题暂时还没有上架商品</p>
-        <p class="state-block__sub">换个专题看看，或去商品中心按条件自由浏览</p>
-        <el-button type="primary" round @click="goGoodsCenter">
-          去商品中心逛逛
-        </el-button>
+      <div v-else-if="theme.list.length === 0" class="theme-empty">
+        <div class="theme-empty__badge">
+          <el-icon><Collection /></el-icon>
+        </div>
+        <p class="theme-empty__title">该专题暂时没有商品</p>
+        <p class="theme-empty__sub">成为第一个上架的人，或去全部商品里逛逛</p>
+        <div class="theme-empty__actions">
+          <el-button type="primary" round @click="goPublish">
+            去发布闲置
+          </el-button>
+          <el-button round @click="goGoodsCenter">
+            逛逛全部商品
+          </el-button>
+        </div>
       </div>
 
-      <!-- 商品区：各自版式 -->
-      <div v-else class="theme-goods" :class="`layout--${theme.layout}`">
+      <!-- 商品区：全站统一网格（卡片尺寸一致，不随机错位/跨列） -->
+      <div v-else class="theme-goods">
         <div
-            v-for="(goods, i) in theme.list"
+            v-for="goods in theme.list"
             :key="goods.goodsId"
             class="theme-goods__item"
-            :class="itemClass(theme, i)"
         >
-          <span v-if="theme.layout === 'strip'" class="theme-goods__rank">
-            {{ i + 1 }}
-          </span>
           <GoodsCard
               :goods="goods"
               :category-name="getCategoryName(goods.categoryId)"
@@ -270,7 +269,7 @@
 
     <!-- 页尾说明 -->
     <footer class="discover__foot">
-      <span>专题头图由平台图片生成接口生成 · 商品数据均来自真实在售闲置</span>
+      <span>专题头图为校园实拍素材 + 主题色蒙版 · 商品数据均来自真实在售闲置</span>
     </footer>
 
   </div>
@@ -282,7 +281,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Collection, Star, Share, Refresh, ArrowRight, PriceTag, Location, Picture
+  Collection, Star, Share, Refresh, ArrowRight, PriceTag, Location
 } from '@element-plus/icons-vue'
 import GoodsCard from '../components/GoodsCard.vue'
 import request from '../utils/request'
@@ -295,17 +294,11 @@ const router = useRouter()
 const currentUserId = Number(localStorage.getItem('userId'))
 
 // =========================
-// 图片：统一走平台图片生成接口（prompt 用 encodeURIComponent 拼接）
+// 专题头图：本地实拍种子图 + 主题色蒙版
+// （种子图由服务器静态映射 /api/files/goods/ 直接提供）
 // =========================
-const buildImage = (prompt, size = 'landscape_16_9') =>
-    `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent(prompt)}&image_size=${size}`
 
-const mastheadImages = {
-  a: buildImage('college flea market stall with secondhand books and plants, warm cream tones, soft natural light, editorial photography', 'portrait_4_3'),
-  b: buildImage('flatlay of campus secondhand goods, notebooks, headphones and a desk lamp on a cream background, editorial photography', 'square_hd')
-}
-
-// 头图加载失败占位（真实图片不可用时兜底，不用纯色块冒充头图）
+// 头图加载失败兜底：隐藏 <img>，露出主题色渐变底 + CSS 装饰
 const heroImgError = reactive({})
 const onImgError = (key) => {
   heroImgError[key] = true
@@ -348,7 +341,12 @@ const THEME_DEFS = [
     categories: ['生活用品', '宿舍用品'],
     keyword: '宿舍',
     sortBy: 'latest',
-    prompt: 'cozy college freshman dorm room move-in scene with storage boxes, desk lamp and textbooks, warm cream tones, soft natural light, editorial photography'
+    image: '/api/files/goods/seed-storage.jpg',
+    themeColor: {
+      base: 'var(--campus-coral)',
+      deep: 'var(--campus-coral-deep)',
+      soft: 'var(--campus-coral-soft)'
+    }
   },
   {
     key: 'dorm',
@@ -361,7 +359,12 @@ const THEME_DEFS = [
     categories: ['宿舍用品'],
     keyword: '收纳',
     sortBy: 'latest',
-    prompt: 'cozy dorm room desk makeover with storage boxes, organizers and a small plant, soft pink cream tones, natural light, editorial photography'
+    image: '/api/files/goods/seed-lamp.jpg',
+    themeColor: {
+      base: 'var(--campus-violet)',
+      deep: 'var(--campus-violet-deep)',
+      soft: 'var(--campus-violet-soft)'
+    }
   },
   {
     key: 'digital',
@@ -373,7 +376,12 @@ const THEME_DEFS = [
     pageSize: 8,
     categories: ['数码产品', '办公用品', '乐器设备'],
     sortBy: 'hot',
-    prompt: 'flatlay of a laptop, headphones, keyboard and notebook on a light grey desk, soft cool tones, minimal, editorial photography'
+    image: '/api/files/goods/seed-keyboard.jpg',
+    themeColor: {
+      base: 'var(--campus-sky)',
+      deep: 'var(--campus-sky-deep)',
+      soft: 'var(--campus-sky-soft)'
+    }
   },
   {
     key: 'exam',
@@ -385,7 +393,12 @@ const THEME_DEFS = [
     pageSize: 8,
     keyword: '考研',
     sortBy: 'latest',
-    prompt: 'study desk with exam prep textbooks, notes and a warm desk lamp, light yellow cream tones, soft natural light, editorial photography'
+    image: '/api/files/goods/seed-textbook.jpg',
+    themeColor: {
+      base: 'var(--campus-amber)',
+      deep: 'var(--campus-amber-deep)',
+      soft: 'var(--campus-amber-soft)'
+    }
   },
   {
     key: 'budget',
@@ -397,7 +410,12 @@ const THEME_DEFS = [
     pageSize: 8,
     maxPrice: 50,
     sortBy: 'price_asc',
-    prompt: 'flea market flatlay of affordable secondhand campus items, mugs, books and small gadgets, warm cream and yellow tones, editorial photography'
+    image: '/api/files/goods/seed-accessories.jpg',
+    themeColor: {
+      base: 'var(--brand-primary)',
+      deep: 'var(--brand-primary-active)',
+      soft: 'var(--brand-primary-soft)'
+    }
   },
   {
     key: 'eco',
@@ -408,7 +426,12 @@ const THEME_DEFS = [
     tone: 'eco',
     pageSize: 8,
     sortBy: 'treasure',
-    prompt: 'secondhand items being reused, potted green plants and recycled containers on a cream surface, soft natural light, editorial photography'
+    image: '/api/files/goods/seed-guitar.jpg',
+    themeColor: {
+      base: 'var(--campus-teal)',
+      deep: 'var(--campus-teal-deep)',
+      soft: 'var(--campus-teal-soft)'
+    }
   }
 ]
 
@@ -452,7 +475,6 @@ const buildThemes = () => {
       ...def,
       query,
       queryLabel: parts.join(' · '),
-      image: buildImage(def.prompt, 'landscape_16_9'),
       list: [],
       total: 0,
       loading: false,
@@ -460,6 +482,13 @@ const buildThemes = () => {
     }
   })
 }
+
+// 把专题主题色注入为区块级 CSS 变量（标题强调 / 按钮 / 蒙版 / 装饰共用）
+const themeVars = (theme) => ({
+  '--theme-accent': theme.themeColor.base,
+  '--theme-accent-deep': theme.themeColor.deep,
+  '--theme-accent-soft': theme.themeColor.soft
+})
 
 // =========================
 // 专题商品加载
@@ -665,14 +694,8 @@ const goGoodsCenter = () => {
   router.push('/goods')
 }
 
-// =========================
-// 版式项样式：不同专题不同排布
-// =========================
-const itemClass = (theme, i) => {
-  if (theme.layout === 'collage') return i % 5 === 0 ? 'is-wide' : ''
-  if (theme.layout === 'magazine') return i % 2 === 1 ? 'is-offset' : ''
-  if (theme.layout === 'strip') return 'is-rank'
-  return ''
+const goPublish = () => {
+  router.push('/goods/publish')
 }
 
 // =========================
@@ -768,17 +791,21 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 1fr;
   gap: 20px;
-  padding: 28px;
+  padding: 30px 28px;
   border-radius: var(--brand-radius-xl);
+  /* 紫罗兰 → 浅粉 → 奶油的柔和多色渐变 */
   background:
-    radial-gradient(circle at 88% 14%, rgba(201, 168, 92, 0.18), transparent 46%),
-    linear-gradient(135deg, #fbf3ec 0%, #fdf8f2 52%, #f7eef0 100%);
+    radial-gradient(circle at 86% 12%, rgba(139, 127, 192, 0.16), transparent 44%),
+    radial-gradient(circle at 68% 96%, rgba(224, 142, 121, 0.14), transparent 42%),
+    linear-gradient(120deg, var(--campus-violet-soft) 0%, var(--brand-primary-soft) 46%, var(--brand-bg) 100%);
   border: 1px solid var(--brand-border);
   box-shadow: var(--brand-shadow-sm);
   overflow: hidden;
 }
 
 .masthead__main {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -795,7 +822,7 @@ onBeforeUnmount(() => {
 
 .masthead__title {
   margin: 0;
-  font-size: 30px;
+  font-size: 32px;
   line-height: 1.34;
   font-weight: 800;
   color: var(--brand-text);
@@ -803,8 +830,8 @@ onBeforeUnmount(() => {
 }
 
 .masthead__title-accent {
-  color: var(--brand-accent-hover);
-  border-bottom: 3px solid var(--brand-accent-soft);
+  color: var(--campus-violet-deep);
+  border-bottom: 3px solid var(--campus-violet-soft);
 }
 
 .masthead__desc {
@@ -850,35 +877,51 @@ onBeforeUnmount(() => {
   display: inline-flex;
 }
 
-/* 刊头装饰拼贴：两张真实生成图 */
-.masthead__collage {
-  position: relative;
-  display: none;
-  min-height: 240px;
-}
-
-.masthead__collage-img {
+/* 刊头装饰：漂浮色块 + 圆点阵（纯 CSS，不动 DOM） */
+.masthead__decor {
   position: absolute;
-  object-fit: cover;
-  border-radius: var(--brand-radius-lg);
-  box-shadow: var(--brand-shadow);
-  border: 4px solid var(--brand-white);
+  inset: 0;
+  pointer-events: none;
 }
 
-.masthead__collage-img--a {
-  width: 46%;
-  height: 74%;
-  top: 6%;
-  right: 34%;
-  transform: rotate(-3deg);
+.masthead__blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(30px);
+  animation: mastheadFloat 12s ease-in-out infinite;
 }
 
-.masthead__collage-img--b {
-  width: 44%;
-  height: 62%;
-  right: 2%;
-  bottom: 6%;
-  transform: rotate(3deg);
+.masthead__blob--violet {
+  width: 190px;
+  height: 190px;
+  right: 6%;
+  top: -70px;
+  background: rgba(139, 127, 192, 0.35);
+}
+
+.masthead__blob--coral {
+  width: 150px;
+  height: 150px;
+  right: 24%;
+  bottom: -60px;
+  background: rgba(224, 142, 121, 0.30);
+  animation-delay: -6s;
+}
+
+.masthead__dots {
+  position: absolute;
+  right: 30px;
+  bottom: 26px;
+  width: 120px;
+  height: 64px;
+  background-image: radial-gradient(rgba(139, 127, 192, 0.5) 1.6px, transparent 1.6px);
+  background-size: 14px 14px;
+  opacity: 0.6;
+}
+
+@keyframes mastheadFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
 }
 
 /* ================= 全部好物 ================= */
@@ -961,6 +1004,9 @@ onBeforeUnmount(() => {
   border: 1px solid var(--theme-border);
   box-shadow: var(--brand-shadow-sm);
   transition: box-shadow 0.3s ease;
+  /* 默认主题色（实际由各专题 inline themeVars 覆盖） */
+  --theme-accent-deep: var(--theme-accent);
+  --theme-accent-soft: rgba(255, 255, 255, 0.7);
 }
 
 .theme-section.is-active {
@@ -1028,7 +1074,8 @@ onBeforeUnmount(() => {
   position: relative;
   min-height: 232px;
   overflow: hidden;
-  background: var(--theme-media-bg);
+  /* 图片缺失时的主题色渐变底，绝不露出破图 */
+  background: linear-gradient(135deg, var(--theme-accent) 0%, var(--theme-accent-deep) 100%);
 }
 
 .theme-hero__img {
@@ -1042,26 +1089,59 @@ onBeforeUnmount(() => {
 }
 
 .theme-section:hover .theme-hero__img {
-  transform: scale(1.035);
+  transform: scale(1.03);
 }
 
-/* 头图加载失败兜底：渐变 + 图标（不冒充真实头图） */
-.theme-hero__img-fallback {
+/* 主题色蒙版：叠在实拍图上，让六张海报色调各异 */
+.theme-hero__mask {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--brand-text-secondary);
-  background: linear-gradient(135deg, var(--theme-media-bg), #ffffff);
+  background: linear-gradient(150deg, var(--theme-accent-deep) 0%, var(--theme-accent) 58%, transparent 130%);
+  opacity: 0.38;
+  mix-blend-mode: multiply;
+  pointer-events: none;
 }
 
-.theme-hero__img-fallback .el-icon {
-  font-size: 34px;
-  opacity: 0.6;
+/* 头图底层装饰：光斑 + 几何圆环（图片缺失时单独撑住视觉） */
+.theme-hero__decor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.theme-hero__orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(26px);
+  background: rgba(255, 255, 255, 0.5);
+  animation: mastheadFloat 10s ease-in-out infinite;
+}
+
+.theme-hero__orb--a {
+  width: 150px;
+  height: 150px;
+  right: -40px;
+  top: -50px;
+}
+
+.theme-hero__orb--b {
+  width: 110px;
+  height: 110px;
+  left: 8%;
+  bottom: -46px;
+  background: var(--theme-accent-soft);
+  opacity: 0.7;
+  animation-delay: -5s;
+}
+
+.theme-hero__ring {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  left: 12%;
+  top: 16%;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45);
 }
 
 /* 头图上浮光斑 */
@@ -1158,69 +1238,42 @@ onBeforeUnmount(() => {
   background: var(--brand-accent-soft);
 }
 
+/* 专题操作按钮跟随主题色 */
+.theme-hero__actions .el-button {
+  --el-button-text-color: var(--theme-accent-deep);
+  --el-button-border-color: var(--theme-accent);
+  --el-button-hover-text-color: #fff;
+  --el-button-hover-bg-color: var(--theme-accent);
+  --el-button-hover-border-color: var(--theme-accent);
+  --el-button-active-bg-color: var(--theme-accent-deep);
+  --el-button-active-border-color: var(--theme-accent-deep);
+}
+
+/* 空态主按钮跟随主题色 */
+.theme-empty .el-button--primary {
+  border: none;
+  background: linear-gradient(120deg, var(--theme-accent), var(--theme-accent-deep));
+}
+
 /* ================= 商品区通用 ================= */
 
+/* 全站统一：响应式网格 + 一致的卡片尺寸
+   不同专题只通过头图与主色区分，不再使用横向滚动 / 跨列 / 错位版式 */
 .theme-goods {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
   padding: 0 24px;
 }
 
-/* 编辑封面式：横向滚动卡片带 */
-.layout--cover {
-  display: flex;
-  gap: 16px;
-  overflow-x: auto;
-  padding: 6px 24px 16px;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: thin;
-}
-
-.layout--cover .theme-goods__item {
-  flex: 0 0 238px;
-  scroll-snap-align: start;
+.theme-goods__item {
+  position: relative;
+  min-width: 0;
   transition: transform 0.25s ease;
 }
 
-.layout--cover .theme-goods__item:hover {
-  transform: translateY(-6px);
-}
-
-/* 拼贴式：不等宽网格 */
-.layout--collage {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-
-/* 编辑带式：横向滚动 + 名次编号 */
-.layout--strip {
-  display: flex;
-  gap: 18px;
-  overflow-x: auto;
-  padding: 6px 24px 16px;
-  scrollbar-width: thin;
-}
-
-.layout--strip .theme-goods__item {
-  position: relative;
-  flex: 0 0 300px;
-}
-
-.theme-goods__rank {
-  position: absolute;
-  top: -10px;
-  left: -10px;
-  z-index: 3;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  font-weight: 800;
-  color: #fff;
-  border-radius: 50%;
-  background: var(--theme-accent);
-  box-shadow: var(--brand-shadow-sm);
+.theme-goods__item:hover {
+  transform: translateY(-3px);
 }
 
 /* ================= 状态块（空态 / 失败） ================= */
@@ -1255,6 +1308,56 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 12.5px;
   color: var(--brand-text-secondary);
+}
+
+/* 专题空态：主题色图标徽章 + 双按钮引导 */
+.theme-empty {
+  margin: 0 24px;
+  padding: 44px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  border-radius: var(--brand-radius-lg);
+  background:
+    radial-gradient(circle at 50% 0%, var(--theme-accent-soft), transparent 62%),
+    rgba(255, 255, 255, 0.78);
+  border: 1px dashed var(--theme-border, var(--brand-border));
+}
+
+.theme-empty__badge {
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 26px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--theme-accent), var(--theme-accent-deep));
+  box-shadow: var(--brand-shadow-sm);
+}
+
+.theme-empty__title {
+  margin: 2px 0 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--brand-text);
+}
+
+.theme-empty__sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+}
+
+.theme-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
 }
 
 /* 骨架屏 */
@@ -1302,16 +1405,10 @@ onBeforeUnmount(() => {
 
 /* ================= 响应式 ================= */
 
-/* 桌面：多栏拼贴 + 左图右文头图 */
-@media (min-width: 1200px) {
+/* 桌面 ≥1100px：左图右文头图 */
+@media (min-width: 1100px) {
   .masthead {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    align-items: center;
-    padding: 36px 40px;
-  }
-
-  .masthead__collage {
-    display: block;
+    padding: 38px 42px;
   }
 
   .theme-hero {
@@ -1322,53 +1419,19 @@ onBeforeUnmount(() => {
     min-height: 268px;
   }
 
-  .layout--collage {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .layout--collage .is-wide {
-    grid-column: span 2;
+  .theme-goods {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   }
 }
 
-/* 平板：两栏 */
-@media (min-width: 768px) and (max-width: 1199px) {
-  .layout--collage {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .layout--collage .is-wide {
-    grid-column: span 2;
-  }
-}
-
-/* 杂志跨栏式：桌面 3 栏，平板 2 栏，交错位移 */
-@media (min-width: 768px) {
-  .layout--magazine {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .layout--magazine .is-offset {
-    margin-top: 30px;
-  }
-}
-
-@media (min-width: 1200px) {
-  .layout--magazine {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-.layout--magazine {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 18px 16px;
-}
-
-/* 窄屏：单列 */
-@media (max-width: 767px) {
+/* 窄屏 <720px：头图与网格统一留白 */
+@media (max-width: 719px) {
   .masthead__title {
     font-size: 24px;
+  }
+
+  .masthead__dots {
+    display: none;
   }
 
   .discover {
@@ -1382,13 +1445,13 @@ onBeforeUnmount(() => {
     padding-right: 16px;
   }
 
-  .layout--cover,
-  .layout--strip {
-    padding-left: 16px;
-    padding-right: 16px;
+  .theme-goods {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
   }
 
-  .state-block {
+  .state-block,
+  .theme-empty {
     margin: 0 16px;
   }
 
@@ -1409,12 +1472,14 @@ onBeforeUnmount(() => {
     transition: none;
   }
 
-  .theme-hero__glow {
+  .theme-hero__glow,
+  .masthead__blob,
+  .theme-hero__orb {
     animation: none;
   }
 
   .theme-section:hover .theme-hero__img,
-  .layout--cover .theme-goods__item:hover {
+  .theme-goods__item:hover {
     transform: none;
   }
 

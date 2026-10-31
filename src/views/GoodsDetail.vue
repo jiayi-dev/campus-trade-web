@@ -495,7 +495,7 @@
 
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -524,6 +524,7 @@ import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
 import { isLoggedIn, requireLogin } from '../utils/auth'
 import { recordFootprint } from '../utils/footprint'
+import { resolveGoodsImage } from '../utils/image'
 
 const route = useRoute()
 const router = useRouter()
@@ -727,17 +728,17 @@ const loadPage = async () => {
 
   // 商品图片列表（主图在前，加载失败默认无图走色块兜底）
   if (imgRes.status === 'fulfilled' && Array.isArray(imgRes.value)) {
-    imageUrls.value = imgRes.value
+    // 统一解析：过滤不可访问的旧图床地址，避免详情页出现裂图
+    imageUrls.value = imgRes.value.map(resolveGoodsImage).filter(Boolean)
     activeIndex.value = 0
   }
 
   loading.value = false
 
   // 浏览量上报：商品加载成功后调用，后端原子 +1 并返回最新值
-  // 游客浏览量不上报：/goods/{id}/view 需 Token，游客请求会 401
-  if (isLoggedIn()) {
-    reportView()
-  }
+  // 游客也计数（后端 AuthInterceptor 已将 POST /goods/{id}/view 改为可选鉴权），
+  // 卖家本人浏览自己商品时后端会拦截不加，避免虚增热度
+  reportView()
 
   // 浏览足迹：仅记录在当前浏览器本地（后端无浏览记录接口），页面 /me/collections 展示
   recordFootprint(goods.value)
@@ -873,7 +874,11 @@ const toggleFavorite = async () => {
         : await request.post(`/favorite/${goodsId}`)
 
     if (result === '收藏成功' || result === '已取消收藏') {
-      isFavorite.value = !isFavorite.value
+      const nowFav = !isFavorite.value
+      isFavorite.value = nowFav
+      // 收藏数即时同步：本地跟随操作 +1/-1（带下限保护），不必退出重进才刷新
+      const cur = Number(goods.value.favoriteCount) || 0
+      goods.value.favoriteCount = nowFav ? cur + 1 : Math.max(0, cur - 1)
       ElMessage.success(result)
     } else {
       // 例如“不能收藏自己发布的商品”“商品不存在或已被删除”
@@ -1031,15 +1036,27 @@ const goSellerProfile = () => {
 
 // =========================
 // 联系卖家：滚动到留言区并聚焦输入框
+// 注意：Layout 的主区域 .content 才是真正的滚动容器（body/html 被 overflow:hidden 锁死），
+// 直接用 scrollIntoView 会滚错目标，必须手动对 .content 设置 scrollTop。
 // =========================
-const scrollToMessage = () => {
-  // 游客门禁：联系卖家本质是发留言，必须登录
+const scrollToMessage = async () => {
   if (!isLoggedIn()) {
     requireLogin('登录后才能联系卖家', route.fullPath)
     return
   }
-  document.getElementById('message-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  messageInputRef.value?.focus()
+  await nextTick()
+  const panel = document.getElementById('message-panel')
+  const scroller = document.querySelector('.content')
+  if (panel && scroller) {
+    const panelTop = panel.getBoundingClientRect().top
+    const scrollerTop = scroller.getBoundingClientRect().top
+    scroller.scrollTo({
+      top: scroller.scrollTop + panelTop - scrollerTop - 16,
+      behavior: 'smooth',
+    })
+  }
+  // 稍后焦点落在输入框，避免动画被抢占
+  setTimeout(() => messageInputRef.value?.focus({ preventScroll: true }), 360)
 }
 
 

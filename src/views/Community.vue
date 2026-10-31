@@ -1,7 +1,7 @@
 <template>
   <!--
     校园社区动态（列表页 /community）
-    视觉定位：杂志式图文内容流（瀑布感），刻意区别于商品网格与求购便签墙。
+    视觉定位：紫罗兰 + 天空蓝的单栏阅读型内容流（居中 680px），刻意区别于商品网格与求购便签墙。
 
     真实接口（无假数据，全部走后端）：
       GET    /community/page            分页（keyword/topic/sortBy/pageNum/pageSize）
@@ -16,17 +16,24 @@
   -->
   <div class="community-page">
 
-    <!-- 1. 社区头部 -->
+    <!-- 1. 社区头部横幅：紫罗兰渐变 + 光斑气泡 -->
     <section class="community-hero">
-      <div class="community-hero__glow"></div>
+      <div class="community-hero__bubble community-hero__bubble--a"></div>
+      <div class="community-hero__bubble community-hero__bubble--b"></div>
+      <div class="community-hero__bubble community-hero__bubble--c"></div>
       <div class="community-hero__copy">
         <span class="community-hero__eyebrow">CAMPUS COMMUNITY · 校园社区</span>
-        <h1 class="community-hero__title">同学们的生活切片</h1>
+        <h1 class="community-hero__title">校园里正在发生</h1>
         <p class="community-hero__sub">分享闲置、聊聊体验、记录每一次循环新生</p>
+        <button type="button" class="community-hero__publish" @click="openCreate">
+          <el-icon><Plus /></el-icon>发布动态
+        </button>
       </div>
-      <div class="community-hero__stat">
-        <span class="community-hero__num is-num">{{ total === null ? '—' : total }}</span>
-        <span class="community-hero__label">社区动态</span>
+      <div v-if="heroStats.length" class="community-hero__stats">
+        <div v-for="s in heroStats" :key="s.label" class="hero-stat">
+          <span class="hero-stat__num is-num">{{ s.value }}</span>
+          <span class="hero-stat__label">{{ s.label }}</span>
+        </div>
       </div>
     </section>
 
@@ -87,35 +94,32 @@
           <el-option label="最新发布" value="latest" />
           <el-option label="最热动态" value="hot" />
         </el-select>
-
-        <el-button type="primary" class="filters__publish" @click="openCreate">
-          <el-icon><Plus /></el-icon>发布动态
-        </el-button>
-      </div>
-
-      <div class="topic-row">
-        <span class="topic-row__label"><el-icon><PriceTag /></el-icon>主题</span>
-        <div class="chips">
-          <button
-              type="button"
-              class="chip"
-              :class="{ 'chip--on': !topic }"
-              @click="selectTopic('')"
-          >全部</button>
-          <button
-              v-for="t in TOPICS"
-              :key="t"
-              type="button"
-              class="chip"
-              :class="[`chip--${topicKey(t)}`, { 'chip--on': topic === t }]"
-              @click="selectTopic(t)"
-          >{{ t }}</button>
-        </div>
       </div>
     </section>
 
+    <!-- 5.1 话题 chips：从已加载动态聚合 distinct topic（空 topic 排除） -->
+    <div v-if="activeTab === 'feed' && topicChips.length" class="topic-row">
+      <span class="topic-row__label"><el-icon><PriceTag /></el-icon>话题</span>
+      <div class="chips">
+        <button
+            type="button"
+            class="chip"
+            :class="{ 'chip--on': !topic }"
+            @click="selectTopic('')"
+        >全部</button>
+        <button
+            v-for="t in topicChips"
+            :key="t"
+            type="button"
+            class="chip"
+            :class="{ 'chip--on': topic === t }"
+            @click="selectTopic(t)"
+        >{{ t }}</button>
+      </div>
+    </div>
+
     <!-- 「我的动态」工具条 -->
-    <section v-else class="mine-bar">
+    <section v-if="activeTab === 'mine'" class="mine-bar">
       <span class="mine-bar__text">
         这里是你发布的全部动态，可编辑或删除
       </span>
@@ -132,11 +136,18 @@
       <span v-if="hasFilters" class="result-bar__hint">已按筛选条件展示</span>
     </div>
 
-    <!-- 7. 骨架屏 -->
+    <!-- 7. 骨架屏（文本流样式） -->
     <div v-if="loading && currentList.length === 0" class="feed">
       <div v-for="n in 4" :key="n" class="sk-card">
-        <div class="sk-cover"></div>
+        <div class="sk-head">
+          <div class="sk-avatar"></div>
+          <div class="sk-head__lines">
+            <div class="sk-line sk-line--md"></div>
+            <div class="sk-line sk-line--sm"></div>
+          </div>
+        </div>
         <div class="sk-line sk-line--lg"></div>
+        <div class="sk-line"></div>
         <div class="sk-line"></div>
         <div class="sk-line sk-line--sm"></div>
       </div>
@@ -145,11 +156,14 @@
     <!-- 8. 加载失败 -->
     <div v-else-if="loadError" class="state-block">
       <el-icon class="state-block__icon"><CircleCloseFilled /></el-icon>
-      <p class="state-block__title">加载失败，请重试</p>
+      <p class="state-block__title">{{ needLogin ? '登录状态已失效' : '加载失败，请重试' }}</p>
       <p class="state-block__desc">{{ loadErrorDesc }}</p>
-      <el-button type="primary" round @click="reload">
-        <el-icon><Refresh /></el-icon>重新加载
-      </el-button>
+      <div class="state-block__actions">
+        <el-button type="primary" round @click="reload">
+          <el-icon><Refresh /></el-icon>重新加载
+        </el-button>
+        <el-button v-if="needLogin" round @click="goLogin">去登录</el-button>
+      </div>
     </div>
 
     <!-- 9. 空状态 -->
@@ -162,72 +176,112 @@
       </el-button>
     </div>
 
-    <!-- 10. 内容流：杂志式瀑布卡片 -->
+    <!-- 10. 内容流：单栏阅读型卡片（居中 680px，刻意区别于商品网格） -->
     <div v-else class="feed">
       <article
-          v-for="post in currentList"
+          v-for="(post, index) in currentList"
           :key="post.postId"
-          class="post-card"
+          :ref="setCardEl(post.postId)"
+          class="post-card pre-in"
+          :style="{ '--d': `${(index % pageSize) * 60}ms` }"
           @click="goDetail(post.postId)"
       >
-        <!-- 有配图：封面 + 主题丝带浮层 -->
-        <div v-if="post.imageUrl" class="post-card__cover">
-          <img :src="post.imageUrl" :alt="post.title" loading="lazy" />
-          <span class="ribbon" :class="`ribbon--${topicKey(post.topic)}`">{{ post.topic }}</span>
-        </div>
-
-        <div class="post-card__body">
-          <!-- 无配图：行内主题标签 -->
+        <!-- 头部：头像（用户名 hash 配色）+ 昵称 + 相对时间 + 话题 pill -->
+        <header class="post-card__head">
           <span
-              v-if="!post.imageUrl"
-              class="ribbon ribbon--inline"
+              class="post-card__avatar"
+              :class="`post-card__avatar--${avatarTone(post)}`"
+          >{{ initial(displayName(post)) }}</span>
+          <div class="post-card__who">
+            <span class="post-card__author">{{ displayName(post) }}</span>
+            <span class="post-card__time">{{ formatRelativeTime(post.createTime) }}</span>
+          </div>
+          <span
+              v-if="post.topic"
+              class="ribbon"
               :class="`ribbon--${topicKey(post.topic)}`"
           >{{ post.topic }}</span>
+        </header>
 
-          <h3 class="post-card__title">{{ post.title }}</h3>
-          <p class="post-card__excerpt">{{ post.content }}</p>
+        <h3 class="post-card__title">{{ post.title }}</h3>
+        <p class="post-card__excerpt" :ref="setExcerptEl(post.postId)">{{ post.content }}</p>
+        <button
+            v-if="expandable.has(post.postId)"
+            type="button"
+            class="post-card__more"
+            @click.stop="goDetail(post.postId)"
+        >展开</button>
 
-          <div class="post-card__byline">
-            <span class="post-card__avatar">{{ initial(post.authorName) }}</span>
-            <span class="post-card__author">{{ post.authorName || '匿名同学' }}</span>
-            <span class="post-card__time">· {{ formatRelativeTime(post.createTime) }}</span>
-          </div>
+        <!-- 配图：URL 先经 resolveGoodsImage 过滤；点击可放大预览，不触发卡片跳转 -->
+        <div v-if="postImage(post)" class="post-card__cover" @click.stop>
+          <el-image
+              :src="postImage(post)"
+              :alt="post.title"
+              fit="cover"
+              loading="lazy"
+              :preview-src-list="[postImage(post)]"
+              preview-teleported
+              hide-on-click-modal
+              :initial-index="0"
+              @error="onImgError(post)"
+          />
+        </div>
 
-          <div class="post-card__foot">
+        <!-- 关联商品入口 -->
+        <button
+            v-if="post.goodsId"
+            type="button"
+            class="post-card__goods"
+            @click.stop="goGoods(post.goodsId)"
+        >
+          <el-icon><Goods /></el-icon>
+          <span>查看提到的商品</span>
+          <el-icon class="post-card__goods-arrow"><ArrowRight /></el-icon>
+        </button>
+
+        <!-- 底部互动条 -->
+        <footer class="post-card__foot">
+          <button
+              type="button"
+              class="stat stat--like"
+              :class="{ 'stat--on': post.liked, 'is-beating': beatingId === post.postId }"
+              @click.stop="toggleLike(post)"
+          >
+            <svg class="heart-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+              <path
+                  d="M12 20.4c-.38 0-.74-.12-1.04-.35C7.14 16.7 3.6 13.5 3.6 9.98c0-2.6 2.06-4.68 4.62-4.68 1.44 0 2.8.68 3.78 1.84a4.96 4.96 0 0 1 3.78-1.84c2.56 0 4.62 2.08 4.62 4.68 0 3.52-3.54 6.72-7.36 10.07-.3.23-.66.35-1.04.35z"
+                  :fill="post.liked ? 'currentColor' : 'none'"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linejoin="round"
+              />
+            </svg>
+            <span class="is-num">{{ post.likeCount ?? 0 }}</span>
+          </button>
+          <span class="stat">
+            <el-icon><ChatDotRound /></el-icon>
+            <span class="is-num">{{ post.commentCount ?? 0 }}</span>
+          </span>
+          <span class="stat stat--muted">
+            <el-icon><View /></el-icon>
+            <span class="is-num">{{ post.viewCount ?? 0 }}</span>
+          </span>
+
+          <!-- 我的动态：编辑 / 删除 -->
+          <span v-if="activeTab === 'mine'" class="post-card__own-ops">
+            <button type="button" class="own-btn" @click.stop="openEdit(post)">
+              <el-icon><Edit /></el-icon>编辑
+            </button>
             <button
                 type="button"
-                class="stat stat--like"
-                :class="{ 'stat--on': post.liked }"
-                @click.stop="toggleLike(post)"
+                class="own-btn own-btn--danger"
+                :disabled="deletingId === post.postId"
+                @click.stop="deletePost(post)"
             >
-              <el-icon><StarFilled v-if="post.liked" /><Star v-else /></el-icon>
-              <span class="is-num">{{ post.likeCount ?? 0 }}</span>
+              <el-icon><Delete /></el-icon>删除
             </button>
-            <span class="stat">
-              <el-icon><ChatDotRound /></el-icon>
-              <span class="is-num">{{ post.commentCount ?? 0 }}</span>
-            </span>
-            <span class="stat stat--muted">
-              <el-icon><View /></el-icon>
-              <span class="is-num">{{ post.viewCount ?? 0 }}</span>
-            </span>
-
-            <!-- 我的动态：编辑 / 删除 -->
-            <span v-if="activeTab === 'mine'" class="post-card__own-ops">
-              <button type="button" class="own-btn" @click.stop="openEdit(post)">
-                <el-icon><Edit /></el-icon>编辑
-              </button>
-              <button
-                  type="button"
-                  class="own-btn own-btn--danger"
-                  :disabled="deletingId === post.postId"
-                  @click.stop="deletePost(post)"
-              >
-                <el-icon><Delete /></el-icon>删除
-              </button>
-            </span>
-          </div>
-        </div>
+          </span>
+        </footer>
       </article>
     </div>
 
@@ -282,14 +336,60 @@
           />
         </el-form-item>
 
-        <el-form-item label="配图链接（可选）" prop="imageUrl">
-          <el-input
-              v-model="form.imageUrl"
-              placeholder="粘贴一张图片的 URL，如 /api/files/goods/xxx.jpg"
-              clearable
-          />
-          <div v-if="imagePreview" class="cover-preview">
-            <img :src="imagePreview" alt="配图预览" />
+        <el-form-item label="配图（可选）" prop="imageUrl">
+          <!-- 普通用户只需选择本地图片，不需要理解图片路径 -->
+          <div class="cover-uploader">
+            <input
+                ref="coverInputRef"
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                class="cover-uploader__input"
+                @change="handleCoverChange"
+            >
+
+            <div v-if="form.imageUrl" class="cover-preview">
+              <img :src="form.imageUrl" alt="配图预览">
+              <div class="cover-preview__mask">
+                <el-icon v-if="coverUploading" class="is-loading"><Loading /></el-icon>
+                <span v-else>已上传</span>
+              </div>
+            </div>
+
+            <button
+                v-else
+                type="button"
+                class="cover-picker"
+                :disabled="coverUploading"
+                @click="chooseCover"
+            >
+              <el-icon v-if="coverUploading" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else><Plus /></el-icon>
+              <span>{{ coverUploading ? '图片上传中…' : '添加图片' }}</span>
+              <small>JPG / PNG / GIF / WEBP，不超过 5MB</small>
+            </button>
+
+            <div class="cover-uploader__ops">
+              <el-button
+                  v-if="form.imageUrl"
+                  size="small"
+                  round
+                  :disabled="coverUploading"
+                  @click="chooseCover"
+              >
+                重新选择
+              </el-button>
+              <el-button
+                  v-if="form.imageUrl"
+                  size="small"
+                  round
+                  plain
+                  type="danger"
+                  :disabled="coverUploading"
+                  @click="removeCover"
+              >
+                删除图片
+              </el-button>
+            </div>
           </div>
         </el-form-item>
 
@@ -305,8 +405,8 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="formVisible = false">取消</el-button>
-        <el-button type="primary" :loading="formSubmitting" @click="submitForm">
+        <el-button round @click="formVisible = false">取消</el-button>
+        <el-button type="primary" round :loading="formSubmitting" @click="submitForm">
           {{ isEdit ? '保存修改' : '立即发布' }}
         </el-button>
       </template>
@@ -316,16 +416,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Search, Plus, Compass, User, PriceTag, Notebook, Star, StarFilled,
+  Search, Plus, Compass, User, PriceTag, Notebook,
   ChatDotRound, View, Edit, Delete, Refresh, Lock, WarningFilled,
-  CircleCloseFilled
+  CircleCloseFilled, Goods, ArrowRight, Loading
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatRelativeTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
+import { uploadImage } from '../utils/upload'
 
 const router = useRouter()
 
@@ -352,14 +454,47 @@ const setupPending = ref(false)   // 疑似 community_* 表尚未初始化（接
 const needLogin = ref(false)      // 未登录 / Token 失效（接口 401）
 
 const deletingId = ref(null)
+const beatingId = ref(null)
 
 const currentList = computed(() => activeTab.value === 'mine' ? mineList.value : feedList.value)
 
 const hasFilters = computed(() => !!keyword.value || !!topic.value)
 
+// =========================
+// 话题聚合 / 横幅统计（全部来自已加载真实数据，客户端计算）
+// =========================
+const knownTopics = ref([])
+
+const mergeTopics = (list) => {
+  const set = new Set(knownTopics.value)
+  let changed = false
+  for (const p of list) {
+    const t = (p.topic || '').trim()
+    if (t && !set.has(t)) {
+      set.add(t)
+      changed = true
+    }
+  }
+  if (changed) knownTopics.value = [...set]
+}
+
+const topicChips = computed(() => knownTopics.value)
+
+const heroStats = computed(() => {
+  if (loadError.value) return []
+  const stats = []
+  if (activeTab.value === 'feed') {
+    if (total.value > 0) stats.push({ label: '社区动态', value: total.value })
+    if (topicChips.value.length > 0) stats.push({ label: '话题', value: topicChips.value.length })
+  } else if (mineList.value.length > 0) {
+    stats.push({ label: '我的动态', value: mineList.value.length })
+  }
+  return stats
+})
+
 const emptyTitle = computed(() => {
   if (activeTab.value === 'mine') return '你还没有发布过动态'
-  return hasFilters.value ? '没有找到符合条件的动态' : '社区还静悄悄的'
+  return hasFilters.value ? '没有找到符合条件的动态' : '还没有动态，来发第一条'
 })
 
 const emptyDesc = computed(() => {
@@ -389,6 +524,88 @@ const topicKey = (t) => {
 }
 
 const initial = (name) => (name || '同').charAt(0).toUpperCase()
+
+const displayName = (post) => post.authorName || post.username || '匿名同学'
+
+// 头像配色：按用户名 charCode 累加 hash，从 5 个主题色中取一个
+const AVATAR_TONES = ['violet', 'teal', 'coral', 'amber', 'sky']
+
+const avatarTone = (post) => {
+  const name = displayName(post)
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash += name.charCodeAt(i)
+  return AVATAR_TONES[hash % AVATAR_TONES.length]
+}
+
+// 配图：先经 resolveGoodsImage 过滤不可达地址；加载失败记入 brokenImages 后隐藏图区
+const brokenImages = reactive(new Set())
+
+const postImage = (post) => {
+  if (brokenImages.has(post.postId)) return ''
+  return resolveGoodsImage(post.imageUrl)
+}
+
+const onImgError = (post) => {
+  brokenImages.add(post.postId)
+}
+
+// =========================
+// 入场动画 / 「展开」测量
+// =========================
+const reduceMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+const expandable = reactive(new Set())
+const excerptEls = new Map()
+const cardEls = new Map()
+
+const setExcerptEl = (id) => (el) => {
+  if (el) excerptEls.set(id, el)
+  else excerptEls.delete(id)
+}
+
+const setCardEl = (id) => (el) => {
+  if (el) cardEls.set(id, el)
+  else cardEls.delete(id)
+}
+
+// 正文 4 行截断后仍溢出，才显示「展开」
+const measureExpandable = () => {
+  expandable.clear()
+  excerptEls.forEach((el, id) => {
+    if (el.scrollHeight > el.clientHeight + 2) expandable.add(id)
+  })
+}
+
+let cardObserver = null
+
+const observeCards = () => {
+  if (reduceMotion || typeof IntersectionObserver !== 'function') {
+    cardEls.forEach((el) => el.classList.add('is-in'))
+    return
+  }
+  cardObserver?.disconnect()
+  cardObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-in')
+        cardObserver.unobserve(entry.target)
+      }
+    }
+  }, { threshold: 0.08 })
+  cardEls.forEach((el) => cardObserver.observe(el))
+}
+
+const afterListRender = () => {
+  nextTick(() => {
+    observeCards()
+    measureExpandable()
+  })
+}
+
+const onResize = () => measureExpandable()
 
 // 依据错误响应判定降级类型
 const classifyError = (error) => {
@@ -420,6 +637,8 @@ const loadFeed = async () => {
 
     feedList.value = Array.isArray(result?.list) ? result.list : []
     total.value = Number(result?.total) || 0
+    mergeTopics(feedList.value)
+    afterListRender()
   } catch (error) {
     classifyError(error)
     loadError.value = true
@@ -438,6 +657,7 @@ const loadMine = async () => {
     const result = await request.get('/community/mine')
     mineList.value = Array.isArray(result) ? result : []
     total.value = mineList.value.length
+    afterListRender()
   } catch (error) {
     classifyError(error)
     loadError.value = true
@@ -502,6 +722,10 @@ const goDetail = (postId) => {
   router.push(`/community/${postId}`)
 }
 
+const goGoods = (goodsId) => {
+  router.push(`/goods/${goodsId}`)
+}
+
 const goLogin = () => {
   router.push({ path: '/login', query: { redirect: '/community' } })
 }
@@ -510,6 +734,12 @@ const goLogin = () => {
 // 点赞切换（真实接口）
 // =========================
 const toggleLike = async (post) => {
+  // 心跳缩放动画（300ms），与接口请求并行
+  beatingId.value = post.postId
+  setTimeout(() => {
+    if (beatingId.value === post.postId) beatingId.value = null
+  }, 300)
+
   try {
     const res = await request.post(`/community/${post.postId}/like`)
 
@@ -539,7 +769,41 @@ const form = reactive({
   goodsId: null
 })
 
-const imagePreview = computed(() => (form.imageUrl || '').trim())
+// 配图上传：走系统文件选择器 → /api/upload/image → 相对 URL 存到 imageUrl
+const coverInputRef = ref(null)
+const coverUploading = ref(false)
+
+const chooseCover = () => {
+  if (coverUploading.value) return
+  coverInputRef.value?.click()
+}
+
+const handleCoverChange = async (event) => {
+  const file = event.target.files && event.target.files[0]
+
+  // 允许连续选择同一张图片时再次触发 change
+  event.target.value = ''
+
+  if (!file) return
+
+  coverUploading.value = true
+
+  try {
+    // uploadImage 内部已校验类型 / 大小 / 登录态，并返回后端相对 URL
+    const url = await uploadImage(file)
+    form.imageUrl = url
+    ElMessage.success('图片已上传')
+  } catch (error) {
+    ElMessage.error(error?.message || '图片上传失败，请稍后重试')
+  } finally {
+    coverUploading.value = false
+  }
+}
+
+// 删除配图：只解除与这条动态的关联，不删除服务器文件（可能被其它内容引用）
+const removeCover = () => {
+  form.imageUrl = ''
+}
 
 const formRules = {
   title: [
@@ -582,6 +846,14 @@ const openEdit = (post) => {
 
 const submitForm = async () => {
   if (!formRef.value) return
+
+  // 图片还在上传时不允许提交，避免把未完成的配图当成正式地址
+  if (coverUploading.value) {
+    ElMessage.warning('配图正在上传，请稍候再发布')
+    return
+  }
+
+  if (formSubmitting.value) return
 
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
@@ -661,10 +933,13 @@ const deletePost = async (post) => {
 
 onMounted(() => {
   loadFeed()
+  window.addEventListener('resize', onResize)
 })
 
 onBeforeUnmount(() => {
   clearTimeout(searchTimer)
+  cardObserver?.disconnect()
+  window.removeEventListener('resize', onResize)
 })
 </script>
 
@@ -678,7 +953,7 @@ onBeforeUnmount(() => {
 }
 
 /* ============================================================
- * 社区头部
+ * 社区头部横幅（紫罗兰渐变 + 光斑气泡）
  * ============================================================ */
 
 .community-hero {
@@ -687,27 +962,47 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 32px 34px;
+  padding: 34px 36px;
   margin-bottom: 18px;
   border-radius: var(--brand-radius-xl);
-  border: 1px solid var(--brand-border);
+  border: 1px solid rgba(139, 127, 192, 0.35);
   overflow: hidden;
   background:
-    radial-gradient(circle at 88% 6%, rgba(216, 168, 173, 0.42), transparent 46%),
-    radial-gradient(circle at 8% 96%, rgba(201, 168, 92, 0.30), transparent 50%),
-    linear-gradient(115deg, var(--brand-primary-soft) 0%, var(--brand-white) 55%, var(--brand-accent-soft) 100%);
-  box-shadow: var(--brand-shadow-sm);
+    radial-gradient(circle at 86% 12%, rgba(255, 255, 255, 0.28), transparent 42%),
+    radial-gradient(circle at 10% 92%, rgba(174, 200, 226, 0.35), transparent 48%),
+    var(--grad-violet-pink);
+  box-shadow: 0 14px 34px rgba(107, 95, 160, 0.22);
 }
 
-.community-hero__glow {
+.community-hero__bubble {
   position: absolute;
-  top: -60px;
-  right: -40px;
-  width: 220px;
-  height: 220px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.42);
-  filter: blur(6px);
+  background: rgba(255, 255, 255, 0.16);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.community-hero__bubble--a {
+  width: 200px;
+  height: 200px;
+  top: -70px;
+  right: -50px;
+}
+
+.community-hero__bubble--b {
+  width: 110px;
+  height: 110px;
+  bottom: -40px;
+  left: 12%;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.community-hero__bubble--c {
+  width: 54px;
+  height: 54px;
+  top: 26px;
+  left: 42%;
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .community-hero__copy {
@@ -720,7 +1015,7 @@ onBeforeUnmount(() => {
   font-size: 11px;
   letter-spacing: 2.4px;
   font-weight: 700;
-  color: var(--brand-primary-active);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .community-hero__title {
@@ -728,40 +1023,66 @@ onBeforeUnmount(() => {
   font-size: 31px;
   line-height: 1.2;
   letter-spacing: 1.5px;
-  color: var(--brand-text);
+  color: #fff;
 }
 
 .community-hero__sub {
-  margin: 0;
+  margin: 0 0 16px;
   font-size: 13.5px;
-  color: var(--brand-text-regular);
+  color: rgba(255, 255, 255, 0.82);
 }
 
-.community-hero__stat {
+.community-hero__publish {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 22px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--campus-violet-deep);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(74, 58, 122, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.community-hero__publish:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(74, 58, 122, 0.32);
+}
+
+.community-hero__stats {
   position: relative;
   flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+}
+
+.hero-stat {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  min-width: 124px;
-  padding: 16px 20px;
+  min-width: 104px;
+  padding: 14px 18px;
   border-radius: var(--brand-radius-lg);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid var(--brand-border);
-  box-shadow: var(--brand-shadow-sm);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(4px);
 }
 
-.community-hero__num {
-  font-size: 34px;
+.hero-stat__num {
+  font-size: 30px;
   font-weight: 800;
   line-height: 1.1;
-  color: var(--brand-primary-active);
+  color: #fff;
 }
 
-.community-hero__label {
+.hero-stat__label {
   font-size: 12px;
-  color: var(--brand-text-secondary);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 /* ============================================================
@@ -801,21 +1122,21 @@ onBeforeUnmount(() => {
 }
 
 .notice--setup {
-  background: var(--brand-accent-soft);
-  border: 1px solid rgba(184, 152, 90, 0.42);
+  background: var(--campus-sky-soft);
+  border: 1px solid rgba(93, 131, 168, 0.4);
 }
 
 .notice--setup .notice__icon {
-  color: var(--brand-accent-hover);
+  color: var(--campus-sky-deep);
 }
 
 .notice--auth {
-  background: var(--brand-primary-soft);
-  border: 1px solid rgba(216, 168, 173, 0.6);
+  background: var(--campus-violet-soft);
+  border: 1px solid rgba(139, 127, 192, 0.5);
 }
 
 .notice--auth .notice__icon {
-  color: var(--brand-primary-active);
+  color: var(--campus-violet-deep);
 }
 
 /* ============================================================
@@ -844,14 +1165,14 @@ onBeforeUnmount(() => {
 }
 
 .tab:hover {
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
+  border-color: var(--campus-violet);
+  color: var(--campus-violet-deep);
 }
 
 .tab--on {
-  background: var(--brand-primary-soft);
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
+  background: var(--campus-violet-soft);
+  border-color: var(--campus-violet);
+  color: var(--campus-violet-deep);
   box-shadow: var(--brand-shadow-sm);
 }
 
@@ -886,15 +1207,13 @@ onBeforeUnmount(() => {
   width: 150px;
 }
 
-.filters__publish {
-  margin-left: auto;
-}
-
 .topic-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
+  margin-bottom: 14px;
+  padding: 0 4px;
 }
 
 .topic-row__label {
@@ -925,33 +1244,16 @@ onBeforeUnmount(() => {
 }
 
 .chip:hover {
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
+  border-color: var(--campus-violet);
+  color: var(--campus-violet-deep);
 }
 
 .chip--on {
   font-weight: 600;
-  background: var(--brand-primary-soft);
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
-}
-
-.chip--experience.chip--on {
-  background: var(--brand-accent-soft);
-  border-color: var(--brand-accent);
-  color: var(--brand-accent-hover);
-}
-
-.chip--trade.chip--on {
-  background: var(--brand-aux-soft);
-  border-color: var(--brand-aux);
-  color: var(--brand-aux);
-}
-
-.chip--eco.chip--on {
-  background: var(--eco-bg);
-  border-color: var(--eco-ink);
-  color: var(--eco-ink);
+  background: var(--campus-violet-soft);
+  border-color: var(--campus-violet);
+  color: var(--campus-violet-deep);
+  box-shadow: 0 3px 10px rgba(139, 127, 192, 0.22);
 }
 
 .mine-bar {
@@ -963,8 +1265,8 @@ onBeforeUnmount(() => {
   padding: 16px 18px;
   margin-bottom: 14px;
   border-radius: var(--brand-radius-lg);
-  background: var(--brand-bg-soft);
-  border: 1px solid var(--brand-border);
+  background: var(--campus-violet-soft);
+  border: 1px solid rgba(139, 127, 192, 0.35);
 }
 
 .mine-bar__text {
@@ -996,64 +1298,125 @@ onBeforeUnmount(() => {
   padding: 2px 10px;
   font-size: 11.5px;
   border-radius: 10px;
-  background: var(--brand-bg-soft);
-  color: var(--brand-accent-hover);
+  background: var(--campus-sky-soft);
+  color: var(--campus-sky-deep);
 }
 
 /* ============================================================
- * 内容流：杂志式瀑布卡片
+ * 内容流：单栏阅读型卡片（居中 680px，区别于商品网格）
  * ============================================================ */
 
 .feed {
-  column-count: 2;
-  column-gap: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 680px;
+  margin: 0 auto;
 }
 
 .post-card {
-  break-inside: avoid;
-  margin: 0 0 18px;
+  padding: 18px 22px 14px;
   border-radius: var(--brand-radius-lg);
   background: var(--brand-white);
   border: 1px solid var(--brand-border);
   box-shadow: var(--brand-shadow-sm);
-  overflow: hidden;
   cursor: pointer;
-  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+  transition: box-shadow 0.28s ease, border-color 0.28s ease;
 }
 
 .post-card:hover {
-  transform: translateY(-5px);
-  border-color: var(--brand-primary);
-  box-shadow: var(--brand-shadow-lg);
+  border-color: var(--campus-violet);
+  box-shadow: 0 14px 34px rgba(107, 95, 160, 0.16);
 }
 
-/* 配图封面 */
-.post-card__cover {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 16 / 10;
+/* 进入视口 fade-up（stagger 由 --d 控制，60ms 一档） */
+.post-card.pre-in {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+.post-card.is-in {
+  animation: fade-up 0.5s ease both;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 头部：头像 + 昵称 + 相对时间 + 话题 pill */
+.post-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.post-card__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.post-card__avatar--violet {
+  background: linear-gradient(135deg, var(--campus-violet), var(--campus-violet-deep));
+}
+
+.post-card__avatar--teal {
+  background: linear-gradient(135deg, var(--campus-teal), var(--campus-teal-deep));
+}
+
+.post-card__avatar--coral {
+  background: linear-gradient(135deg, var(--campus-coral), var(--campus-coral-deep));
+}
+
+.post-card__avatar--amber {
+  background: linear-gradient(135deg, var(--campus-amber), var(--campus-amber-deep));
+}
+
+.post-card__avatar--sky {
+  background: var(--grad-sky-calm);
+}
+
+.post-card__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.post-card__author {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--brand-text);
   overflow: hidden;
-  background: var(--brand-bg-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.post-card__cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  transition: transform 0.5s ease;
+.post-card__time {
+  font-size: 11.5px;
+  color: var(--brand-text-secondary);
 }
 
-.post-card:hover .post-card__cover img {
-  transform: scale(1.04);
-}
-
-.post-card__body {
-  padding: 16px 18px 14px;
-}
-
-/* 主题丝带 */
+/* 话题 pill */
 .ribbon {
+  margin-left: auto;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   padding: 3px 12px;
@@ -1061,35 +1424,18 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.5px;
   border-radius: 999px;
-  color: var(--brand-primary-active);
-  background: var(--brand-primary-soft);
-}
-
-.ribbon--inline {
-  margin-bottom: 10px;
-}
-
-.post-card__cover .ribbon {
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  box-shadow: var(--brand-shadow-sm);
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.ribbon--idle {
-  color: var(--brand-primary-active);
-  background: var(--brand-primary-soft);
+  color: var(--campus-violet-deep);
+  background: var(--campus-violet-soft);
 }
 
 .ribbon--experience {
-  color: var(--brand-accent-hover);
-  background: var(--brand-accent-soft);
+  color: var(--campus-sky-deep);
+  background: var(--campus-sky-soft);
 }
 
 .ribbon--trade {
-  color: var(--brand-aux);
-  background: var(--brand-aux-soft);
+  color: var(--campus-amber-deep);
+  background: var(--campus-amber-soft);
 }
 
 .ribbon--eco {
@@ -1098,10 +1444,10 @@ onBeforeUnmount(() => {
 }
 
 .post-card__title {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 6px;
+  font-size: 17px;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--brand-text);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1110,54 +1456,90 @@ onBeforeUnmount(() => {
 }
 
 .post-card:hover .post-card__title {
-  color: var(--brand-primary-active);
+  color: var(--campus-violet-deep);
 }
 
 .post-card__excerpt {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 13.5px;
   line-height: 1.75;
   color: var(--brand-text-regular);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.post-card__byline {
-  display: flex;
+.post-card__more {
+  margin: 4px 0 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--campus-violet-deep);
+  cursor: pointer;
+}
+
+.post-card__more:hover {
+  text-decoration: underline;
+}
+
+/* 配图 */
+.post-card__cover {
+  margin-top: 12px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--campus-violet-soft);
+  cursor: zoom-in;
+}
+
+.post-card__cover img,
+.post-card__cover .el-image {
+  width: 100%;
+  max-height: 320px;
+  display: block;
+}
+
+.post-card__cover img {
+  object-fit: cover;
+}
+
+/* 关联商品入口 */
+.post-card__goods {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-top: 12px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 163, 199, 0.45);
+  background: var(--campus-sky-soft);
+  color: var(--campus-sky-deep);
   font-size: 12.5px;
-  color: var(--brand-text-secondary);
-}
-
-.post-card__avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  background: var(--brand-sidebar-gradient);
-}
-
-.post-card__author {
   font-weight: 600;
-  color: var(--brand-text-regular);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
 }
 
+.post-card__goods:hover {
+  border-color: var(--campus-sky-deep);
+  background: #d8e6f5;
+}
+
+.post-card__goods-arrow {
+  font-size: 12px;
+}
+
+/* 底部互动条 */
 .post-card__foot {
   display: flex;
   align-items: center;
   gap: 14px;
+  margin-top: 12px;
   padding-top: 12px;
   border-top: 1px dashed var(--brand-border);
 }
@@ -1178,23 +1560,38 @@ onBeforeUnmount(() => {
 .stat--like {
   border: none;
   background: transparent;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 999px;
   cursor: pointer;
   font-size: 12.5px;
   color: var(--brand-text-secondary);
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.stat--like .heart-icon {
+  display: block;
 }
 
 .stat--like:hover {
-  background: var(--brand-primary-soft);
-  color: var(--brand-primary-active);
+  background: var(--campus-violet-soft);
+  color: var(--campus-violet-deep);
 }
 
 .stat--on {
-  color: var(--brand-accent-hover);
-  background: var(--brand-accent-soft);
+  color: var(--campus-violet-deep);
+  background: var(--campus-violet-soft);
   font-weight: 700;
+}
+
+/* 点赞心跳缩放（300ms） */
+.stat--like.is-beating {
+  animation: like-beat 0.3s ease;
+}
+
+@keyframes like-beat {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.3); }
+  100% { transform: scale(1); }
 }
 
 .post-card__own-ops {
@@ -1218,8 +1615,8 @@ onBeforeUnmount(() => {
 }
 
 .own-btn:hover {
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
+  border-color: var(--campus-violet);
+  color: var(--campus-violet-deep);
 }
 
 .own-btn--danger:hover {
@@ -1238,33 +1635,57 @@ onBeforeUnmount(() => {
  * ============================================================ */
 
 .sk-card {
-  break-inside: avoid;
-  margin-bottom: 18px;
-  padding: 16px 18px;
+  padding: 18px 22px;
   border-radius: var(--brand-radius-lg);
   background: var(--brand-white);
   border: 1px solid var(--brand-border);
 }
 
-.sk-cover {
-  height: 150px;
+.sk-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 14px;
-  border-radius: var(--brand-radius);
-  background: linear-gradient(90deg, #f2ece2 25%, #faf5ee 37%, #f2ece2 63%);
+}
+
+.sk-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, #eee9f7 25%, #f6f2fb 37%, #eee9f7 63%);
   background-size: 400% 100%;
   animation: sk-shimmer 1.4s ease infinite;
+}
+
+.sk-head__lines {
+  flex: 1;
+  min-width: 0;
+}
+
+.sk-head__lines .sk-line {
+  margin-bottom: 8px;
+}
+
+.sk-head__lines .sk-line:last-child {
+  margin-bottom: 0;
 }
 
 .sk-line {
   height: 12px;
   margin-bottom: 12px;
   border-radius: 6px;
-  background: linear-gradient(90deg, #f1ebe3 25%, #f8f4ee 37%, #f1ebe3 63%);
+  background: linear-gradient(90deg, #f0ecf7 25%, #f8f5fc 37%, #f0ecf7 63%);
   background-size: 400% 100%;
   animation: sk-shimmer 1.4s ease infinite;
 }
 
+.sk-line:last-child {
+  margin-bottom: 0;
+}
+
 .sk-line--lg { height: 18px; width: 72%; }
+.sk-line--md { width: 34%; }
 .sk-line--sm { width: 42%; }
 
 @keyframes sk-shimmer {
@@ -1290,11 +1711,18 @@ onBeforeUnmount(() => {
 
 .state-block__icon {
   font-size: 44px;
-  color: var(--brand-primary);
+  color: var(--campus-violet);
 }
 
 .state-block__icon--soft {
   opacity: 0.75;
+}
+
+.state-block__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
 }
 
 .state-block__title {
@@ -1322,8 +1750,56 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
+/* 配图上传 */
+.cover-uploader {
+  width: 100%;
+}
+
+.cover-uploader__input {
+  display: none;
+}
+
+.cover-picker {
+  width: 100%;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px;
+  border-radius: var(--brand-radius);
+  border: 1.5px dashed var(--brand-border);
+  background: linear-gradient(160deg, var(--cream-50, #fdfbf7), var(--cream-100, #f8f3ec));
+  color: var(--brand-text-soft, #8a7d74);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+
+.cover-picker:hover:not(:disabled) {
+  border-color: var(--theme-accent, #7fa89b);
+  transform: translateY(-1px);
+}
+
+.cover-picker:disabled {
+  cursor: progress;
+  opacity: .75;
+}
+
+.cover-picker .el-icon {
+  font-size: 22px;
+  color: var(--theme-accent, #7fa89b);
+}
+
+.cover-picker small {
+  font-size: 11.5px;
+  color: var(--brand-text-soft, #a2968c);
+}
+
 .cover-preview {
-  margin-top: 10px;
+  position: relative;
+  margin-top: 0;
   width: 100%;
   border-radius: var(--brand-radius);
   overflow: hidden;
@@ -1337,34 +1813,54 @@ onBeforeUnmount(() => {
   display: block;
 }
 
+.cover-preview__mask {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(45, 40, 36, .55);
+  color: #fff;
+  font-size: 11.5px;
+  backdrop-filter: blur(4px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cover-uploader__ops {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
 /* ============================================================
  * 响应式
  * ============================================================ */
-
-@media (max-width: 980px) {
-  .feed {
-    column-count: 1;
-  }
-}
 
 @media (max-width: 768px) {
   .community-hero {
     flex-direction: column;
     align-items: flex-start;
-    padding: 24px 22px;
+    padding: 22px 20px;
   }
 
   .community-hero__title {
-    font-size: 24px;
+    font-size: 23px;
+  }
+
+  .community-hero__stats {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .hero-stat {
+    flex: 1;
+    min-width: 96px;
   }
 
   .filters__search,
   .filters__select {
-    width: 100%;
-  }
-
-  .filters__publish {
-    margin-left: 0;
     width: 100%;
   }
 
@@ -1381,17 +1877,25 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .post-card,
   .post-card:hover,
-  .post-card__cover img,
   .tab,
   .chip,
   .stat--like,
-  .own-btn {
+  .own-btn,
+  .community-hero__publish,
+  .post-card__goods {
     transition: none;
     transform: none;
   }
 
+  .post-card.pre-in {
+    opacity: 1;
+    transform: none;
+  }
+
+  .post-card.is-in,
+  .stat--like.is-beating,
   .sk-line,
-  .sk-cover {
+  .sk-avatar {
     animation: none;
   }
 }

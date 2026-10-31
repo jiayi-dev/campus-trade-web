@@ -2,80 +2,72 @@
   <div class="home-page">
 
     <!-- ============================================================
-         第一视觉层 · Hero 主视觉
-         5 段奶油渐变 + 搜索 + 快捷词 + 双 CTA + 右侧真实商品浮动卡片（视差）
+         第一视觉层 · 主视觉轮播（左文案 + 右胶带相框实拍图，非对称布局）
+         自动播放 / 悬停暂停 / 触摸滑动 / 键盘左右 / 胶囊进度指示器
          ============================================================ -->
-    <section class="hero" @mousemove="onHeroMove" @mouseleave="resetHero">
-      <div class="hero__bg"></div>
-      <div class="hero__inner">
-        <!-- 左：标题 / 搜索 / CTA -->
-        <div class="hero__left">
-          <span class="hero__badge">校园闲置 · 让好物重新流动</span>
-          <h1 class="hero__title">
-            <span class="hero__title-pink">校园</span><span class="hero__title-dark">二手好物</span>
-          </h1>
-          <p class="hero__subtitle">宿舍到宿舍的交易，便宜、近、可信。</p>
-
-          <div class="hero__search">
-            <el-icon class="hero__search-icon"><Search /></el-icon>
-            <input
-              v-model="keyword"
-              class="hero__search-input"
-              placeholder="试试 找一张宿舍用的书桌 / 九成新教材 / 300元显示器"
-              @keyup.enter="goSearch(keyword)"
-            />
-            <button class="hero__search-btn" @click="goSearch(keyword)">搜索</button>
-          </div>
-
-          <div class="hero__chips">
-            <button
-              v-for="chip in quickChips"
-              :key="chip"
-              class="hero__chip"
-              @click="goSearch(chip)"
-            >{{ chip }}</button>
-          </div>
-
-          <div class="hero__cta">
-            <button class="btn-primary" @click="goGoodsList">开始逛逛</button>
-            <button v-if="role === 'seller'" class="btn-outline" @click="goPublish">
-              <el-icon><Plus /></el-icon>发布闲置
-            </button>
-            <button v-else class="btn-outline" @click="$router.push('/seller-apply')">
-              <el-icon><Promotion /></el-icon>成为卖家
-            </button>
-          </div>
+    <section
+      class="hero-carousel"
+      tabindex="0"
+      aria-roledescription="carousel"
+      @mouseenter="stopCarousel"
+      @mouseleave="startCarousel"
+      @touchstart.passive="onTouchStart"
+      @touchend="onTouchEnd"
+      @keydown.left.prevent="prevSlide"
+      @keydown.right.prevent="nextSlide"
+    >
+      <article
+        v-for="(s, i) in slides"
+        :key="s.key"
+        class="hero-carousel__slide"
+        :class="[`hero-carousel__slide--${s.theme}`, { 'is-active': i === carouselIndex }]"
+        :aria-hidden="i !== carouselIndex"
+      >
+        <!-- 左：文案 + CTA -->
+        <div class="hero-carousel__content">
+          <span class="hero-carousel__badge">{{ s.badge }}</span>
+          <h2 class="hero-carousel__title">{{ s.title }}</h2>
+          <p class="hero-carousel__desc">{{ s.desc }}</p>
+          <button class="hero-carousel__cta" @click="router.push(s.to)">
+            {{ s.cta }}
+            <el-icon><ArrowRight /></el-icon>
+          </button>
         </div>
 
-        <!-- 右：真实热门商品主图浮动卡片（无图用奶杏 fallback） -->
-        <div class="hero__right" ref="heroFloatRef">
-          <template v-if="hotGoods.length">
-            <div
-              v-for="(g, i) in heroFloatCards"
-              :key="g.goodsId"
-              class="float-card"
-              :class="`float-card--${i}`"
-              :style="floatStyle(i)"
-              @click="goGoods(g.goodsId)"
-            >
-              <!-- 内层负责上下浮动 bob，外层 transform 留给鼠标视差，两者不冲突 -->
-              <div class="float-card__inner" :style="{ animationDelay: `${i * 0.7}s` }">
-                <img
-                  v-if="g.imageUrl"
-                  :src="g.imageUrl"
-                  :alt="g.goodsName"
-                  loading="lazy"
-                  @load="e => e.target.classList.add('is-loaded')"
-                />
-                <div v-else class="float-card__fallback"><el-icon><Picture /></el-icon></div>
-                <span class="float-card__price">{{ formatPrice(g.price) }}</span>
-              </div>
-            </div>
-          </template>
-          <div v-else class="hero__float-skeleton">
-            <div v-for="i in 4" :key="i" class="float-card float-card--placeholder"></div>
+        <!-- 右：胶带相框实拍图 + CSS 光斑（图加载失败时隐藏图卡，保留渐变装饰） -->
+        <div class="hero-carousel__visual" aria-hidden="true">
+          <span class="hero-carousel__blob hero-carousel__blob--1"></span>
+          <span class="hero-carousel__blob hero-carousel__blob--2"></span>
+          <div v-if="!s.imgError" class="hero-carousel__photo">
+            <span class="hero-carousel__tape"></span>
+            <img :src="s.img" :alt="s.title" loading="lazy" @error="s.imgError = true" />
           </div>
         </div>
+      </article>
+
+      <button class="hero-carousel__arrow hero-carousel__arrow--prev" aria-label="上一张" @click="prevSlide">
+        <el-icon><ArrowLeft /></el-icon>
+      </button>
+      <button class="hero-carousel__arrow hero-carousel__arrow--next" aria-label="下一张" @click="nextSlide">
+        <el-icon><ArrowRight /></el-icon>
+      </button>
+
+      <div class="hero-carousel__dots">
+        <button
+          v-for="(s, i) in slides"
+          :key="s.key"
+          class="hero-carousel__dot"
+          :class="{ 'is-active': i === carouselIndex }"
+          :aria-label="`切换到第 ${i + 1} 张`"
+          @click="goSlide(i)"
+        >
+          <span
+            v-if="i === carouselIndex"
+            :key="carouselIndex"
+            class="hero-carousel__dot-progress"
+            :style="{ animationDuration: `${slideInterval}ms` }"
+          ></span>
+        </button>
       </div>
     </section>
 
@@ -101,7 +93,7 @@
         <!-- 大卡 -->
         <div class="hot-main" @click="goGoods(hotGoods[0].goodsId)">
           <div class="hot-main__cover">
-            <img v-if="hotGoods[0].imageUrl" :src="hotGoods[0].imageUrl" :alt="hotGoods[0].goodsName" loading="lazy" />
+            <img v-if="resolveGoodsImage(hotGoods[0].imageUrl)" :src="resolveGoodsImage(hotGoods[0].imageUrl)" :alt="hotGoods[0].goodsName" loading="lazy" @error="hotGoods[0].imageUrl = ''" />
             <div v-else class="hot-main__fallback"><el-icon><Picture /></el-icon></div>
             <span class="hot-main__tag">热度 TOP1</span>
           </div>
@@ -177,7 +169,7 @@
       <div v-else-if="treasureGoods.length" class="treasure-grid">
         <div v-for="g in treasureGoods" :key="g.goodsId" class="treasure-card" @click="goGoods(g.goodsId)">
           <div class="treasure-card__cover">
-            <img v-if="g.imageUrl" :src="g.imageUrl" :alt="g.goodsName" loading="lazy" />
+            <img v-if="resolveGoodsImage(g.imageUrl)" :src="resolveGoodsImage(g.imageUrl)" :alt="g.goodsName" loading="lazy" @error="g.imageUrl = ''" />
             <div v-else class="treasure-card__fallback"><el-icon><Picture /></el-icon></div>
             <span class="treasure-card__fav">已被 {{ g.favoriteCount ?? 0 }} 人收藏</span>
           </div>
@@ -332,32 +324,51 @@
     </section>
 
     <!-- ============================================================
-         第四视觉层 · 平台实时数据 4 卡（数字递增）
+         第四视觉层 · 平台实时数据（ECharts 真实统计 + 数字递增）
+         数据来源：GET /api/home/overview（数据库实时聚合）
          ============================================================ -->
-    <section class="block" v-reveal>
+    <section class="block block--apricot" v-reveal>
       <div class="block__head">
         <div>
           <h2 class="block__title">平台数据</h2>
-          <p class="block__sub">校园闲置流转的真实进展</p>
+          <p class="block__sub">数据库实时聚合 · 每次进入首页自动刷新</p>
+        </div>
+        <span class="data-live"><i></i>REAL DATA</span>
+      </div>
+
+      <div ref="statsRef" class="data-panel">
+        <div class="data-panel__chart">
+          <div v-if="loading.overview" class="data-chart__skeleton skel"></div>
+          <div v-else-if="!hasOverviewData" class="data-chart__empty">
+            暂无统计数据
+          </div>
+          <div v-show="!loading.overview && hasOverviewData" ref="overviewChartRef" class="overview-chart"></div>
+        </div>
+
+        <div class="data-panel__side">
+          <div class="stat-card">
+            <div class="stat-card__num is-num">{{ animStats.onSaleCount }}</div>
+            <div class="stat-card__label">在售商品</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__num is-num">{{ animStats.totalTradeCount }}</div>
+            <div class="stat-card__label">已完成交易</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__num is-num">{{ animStats.sellerCount }}</div>
+            <div class="stat-card__label">校园卖家</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__num is-num">{{ animStats.totalFavoriteCount }}</div>
+            <div class="stat-card__label">累计收藏</div>
+          </div>
         </div>
       </div>
-      <div ref="statsRef" class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-card__num is-num">{{ animStats.onSaleCount }}</div>
-          <div class="stat-card__label">在售商品</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card__num is-num">{{ animStats.totalTradeCount }}</div>
-          <div class="stat-card__label">已完成交易</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card__num is-num">{{ animStats.sellerCount }}</div>
-          <div class="stat-card__label">校园卖家</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card__num is-num">{{ animStats.totalFavoriteCount }}</div>
-          <div class="stat-card__label">累计收藏</div>
-        </div>
+
+      <div class="data-scope">
+        统计口径：全平台数据库当前值（在售 = 状态在售商品数；已完成交易 = 订单状态为「已完成」的数量；
+        校园卖家 = 卖家角色账号数；累计收藏 = 收藏关系总数）。平均认领
+        {{ overview.avgTradeDays ?? 0 }} 天，覆盖 {{ campuses.length }} 个校区。
       </div>
     </section>
 
@@ -380,7 +391,7 @@
           @click="goGoods(r.goodsId)"
         >
           <div class="recent-card__cover">
-            <img v-if="r.imageUrl" :src="r.imageUrl" :alt="r.goodsName" loading="lazy" />
+            <img v-if="resolveGoodsImage(r.imageUrl)" :src="resolveGoodsImage(r.imageUrl)" :alt="r.goodsName" loading="lazy" @error="r.imageUrl = ''" />
             <div v-else class="recent-card__fallback"><el-icon><Picture /></el-icon></div>
           </div>
           <div class="recent-card__name">{{ r.goodsName }}</div>
@@ -448,6 +459,19 @@
         <div class="home-footer__copy">© 2026 校园二手交易平台 · 学生课程作品</div>
       </div>
     </footer>
+
+    <!-- 首次进入的轻量彩带（4.5s 自动结束，可手动关闭，不拦截页面点击） -->
+    <transition name="confetti-fade">
+      <div v-if="confettiVisible" class="confetti-layer" aria-hidden="true">
+        <span
+          v-for="c in confetti"
+          :key="c.i"
+          class="confetti"
+          :style="c.style"
+        ></span>
+        <button class="confetti__close" @click="dismissConfetti">关闭特效</button>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -455,14 +479,16 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  Search, Plus, Promotion, Picture, View, Star, Location,
+  Picture, View, Star, Location,
   Files, MagicStick, ChatLineSquare, School,
-  House, Reading, Cellphone, Coffee, Bicycle, Basketball
+  House, Reading, Cellphone, Coffee, Bicycle, Basketball,
+  ArrowLeft, ArrowRight
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import request from '../utils/request'
 import GoodsCard from '../components/GoodsCard.vue'
 import { formatPrice, formatRelativeTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 import { SCENES } from '../utils/scenes'
 
 const router = useRouter()
@@ -486,11 +512,6 @@ const recentViews = ref([])
 
 const loading = reactive({ overview: true, hot: true, treasure: true, latest: true, campus: false, category: true })
 
-const keyword = ref('')
-
-// 快捷搜索词
-const quickChips = ['显示器', '九成新教材', '宿舍书桌', '自行车']
-
 // 场景导航：定义与商品中心共享（utils/scenes.js），这里只补充首页卡片需要的图标与配色
 // 点击进入 /goods?scene=<key>，由商品中心还原成"带语义的场景筛选状态"
 const sceneIcons = { dorm: House, study: Reading, digital: Cellphone, life: Coffee, bike: Bicycle, sport: Basketball }
@@ -503,6 +524,134 @@ const sceneBgs = {
   sport: 'linear-gradient(135deg,#f3e6d4,#f5ead0)'
 }
 const scenes = SCENES.map(s => ({ ...s, icon: sceneIcons[s.key], bg: sceneBgs[s.key] }))
+
+// ===== 主视觉轮播 =====
+// 左文案 + 右胶带相框实拍图的非对称布局；实拍图加载失败时隐藏图卡，
+// 仅保留渐变背景与 CSS 光斑装饰，不留空白大块
+const slides = reactive([
+  {
+    key: 'market',
+    theme: 'coral',
+    badge: '校园市场',
+    title: '发现校园好物',
+    desc: '宿舍到宿舍的交易，便宜、近、可信，学长学姐的好物正在低价流转。',
+    cta: '去逛逛',
+    to: '/goods',
+    img: '/api/files/goods/seed-phone.jpg',
+    imgError: false
+  },
+  {
+    key: 'publish',
+    theme: 'violet',
+    badge: '发布闲置',
+    title: '让带不走的好物，遇见下一位主人',
+    desc: '拍照、定价、写句话，三分钟上架，闲置也能陪你体面告别。',
+    cta: '发布闲置',
+    to: '/goods/publish',
+    img: '/api/files/goods/seed-camera.jpg',
+    imgError: false
+  },
+  {
+    key: 'wanted',
+    theme: 'teal',
+    badge: '求购广场',
+    title: '同学们正在找这些，你有货吗',
+    desc: '教材、台灯、显示器……顺手翻翻求购清单，闲置秒变零花钱。',
+    cta: '去看看',
+    to: '/wanted',
+    img: '/api/files/goods/seed-notes.jpg',
+    imgError: false
+  },
+  {
+    key: 'discover',
+    theme: 'amber',
+    badge: '编辑精选',
+    title: '专题集市，按场景逛好物',
+    desc: '宿舍焕新、开学季、数码升级，编辑帮你把同场景好物聚在一起。',
+    cta: '逛专题',
+    to: '/discover',
+    img: '/api/files/goods/seed-storage.jpg',
+    imgError: false
+  }
+])
+
+const slideInterval = 5000
+const carouselIndex = ref(0)
+let carouselTimer = null
+
+// 尊重系统「减少动态效果」偏好：不自动播放，仍可手动切换
+const prefersReducedMotion = window.matchMedia
+  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  : false
+
+const startCarousel = () => {
+  if (prefersReducedMotion || carouselTimer) return
+  carouselTimer = setInterval(() => {
+    carouselIndex.value = (carouselIndex.value + 1) % slides.length
+  }, slideInterval)
+}
+const stopCarousel = () => {
+  if (carouselTimer) {
+    clearInterval(carouselTimer)
+    carouselTimer = null
+  }
+}
+const nextSlide = () => {
+  carouselIndex.value = (carouselIndex.value + 1) % slides.length
+  stopCarousel()
+  startCarousel()
+}
+const prevSlide = () => {
+  carouselIndex.value = (carouselIndex.value - 1 + slides.length) % slides.length
+  stopCarousel()
+  startCarousel()
+}
+const goSlide = (i) => {
+  carouselIndex.value = i
+  stopCarousel()
+  startCarousel()
+}
+
+// 触摸滑动切换：横向位移 > 40px 且明显大于纵向位移时触发，避免误拦滚动
+let touchStartX = 0
+let touchStartY = 0
+const onTouchStart = (e) => {
+  touchStartX = e.changedTouches[0].clientX
+  touchStartY = e.changedTouches[0].clientY
+}
+const onTouchEnd = (e) => {
+  const dx = e.changedTouches[0].clientX - touchStartX
+  const dy = e.changedTouches[0].clientY - touchStartY
+  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+    if (dx < 0) nextSlide()
+    else prevSlide()
+  }
+}
+
+// ===== 首次进入彩带（会话级只播放一次，可关闭）=====
+const confettiVisible = ref(false)
+const confettiColors = ['#e8b4b8', '#f4d5d8', '#d8b658', '#ead9a0', '#dde3e8']
+const confetti = Array.from({ length: 22 }, (_, i) => ({
+  i,
+  style: {
+    left: `${(i * 17 + 4) % 96}%`,
+    width: `${7 + (i % 3) * 3}px`,
+    height: `${10 + (i % 4) * 3}px`,
+    background: confettiColors[i % confettiColors.length],
+    animationDelay: `${(i % 11) * 0.16}s`,
+    animationDuration: `${2.8 + (i % 5) * 0.35}s`,
+    transform: `rotate(${(i * 37) % 360}deg)`
+  }
+}))
+let confettiTimer = null
+const dismissConfetti = () => {
+  confettiVisible.value = false
+  if (confettiTimer) {
+    clearTimeout(confettiTimer)
+    confettiTimer = null
+  }
+}
+
 const tips = [
   '优先选择同校区的同学面交，避免异地邮寄风险。',
   '面交时约在图书馆、宿舍楼下等公共明亮场所。',
@@ -519,10 +668,16 @@ const aiExamples = [
 ]
 
 // ===== 计算属性 =====
-const heroFloatCards = computed(() => hotGoods.value.slice(0, 6))
 const hotSide = computed(() => hotGoods.value.slice(1, 5)) // 0 大卡，1-4 小卡
 const campuses = computed(() => Array.isArray(overview.value.campuses) ? overview.value.campuses : [])
 const activeCampusGoods = computed(() => campusGoodsMap.value[activeCampus.value] || [])
+
+// 平台概览是否存在可绘制的真实数据（全 0 时按空状态处理，不画假图）
+const hasOverviewData = computed(() => {
+  const o = overview.value || {}
+  return ['onSaleCount', 'totalTradeCount', 'sellerCount', 'totalFavoriteCount']
+    .some(k => Number(o[k]) > 0)
+})
 
 // 分类名映射（卡片展示分类标签用）
 const categoryMap = computed(() => {
@@ -546,9 +701,16 @@ const animateStats = () => {
     totalFavoriteCount: Number(overview.value.totalFavoriteCount) || 0
   }
   const dur = 1400
+  // 用户偏好减少动态效果时直接呈现最终值，不做数字递增
+  if (prefersReducedMotion) {
+    Object.assign(animStats, targets)
+    return
+  }
+  // 进度统一用 performance.now() 计算，避免 rAF 时间戳与 performance.now()
+  // 不同源（无头浏览器/虚拟时钟）时出现负进度
   const start = performance.now()
-  const tick = (now) => {
-    const p = Math.min((now - start) / dur, 1)
+  const tick = () => {
+    const p = Math.min(Math.max((performance.now() - start) / dur, 0), 1)
     const ease = 1 - Math.pow(1 - p, 3) // easeOutCubic
     Object.keys(targets).forEach(k => {
       animStats[k] = Math.round(targets[k] * ease)
@@ -556,6 +718,75 @@ const animateStats = () => {
     if (p < 1) requestAnimationFrame(tick)
   }
   requestAnimationFrame(tick)
+}
+
+// ===== ECharts：平台真实统计 =====
+// 数据全部来自 /home/overview，不生成随机/演示数值
+const overviewChartRef = ref(null)
+let overviewChart = null
+const renderOverviewChart = async () => {
+  if (!hasOverviewData.value || !overviewChartRef.value) return
+  // 按需加载 ECharts：首屏不必为图表付出整包体积（与 Dashboard 共享 chunk）
+  let echarts
+  try {
+    echarts = await import('echarts')
+  } catch (e) {
+    // 图表库加载失败时静默降级，不影响首页其它区块
+    return
+  }
+  if (!overviewChartRef.value) return
+  if (!overviewChart) overviewChart = echarts.init(overviewChartRef.value)
+
+  const o = overview.value || {}
+  const rows = [
+    { name: '在售商品', value: Number(o.onSaleCount) || 0, color: '#e8b4b8' },
+    { name: '已完成交易', value: Number(o.totalTradeCount) || 0, color: '#d8b658' },
+    { name: '校园卖家', value: Number(o.sellerCount) || 0, color: '#c7b3ab' },
+    { name: '累计收藏', value: Number(o.totalFavoriteCount) || 0, color: '#a8b6c0' }
+  ]
+
+  overviewChart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: 'rgba(255,255,255,.96)',
+      borderColor: '#ece3dc',
+      textStyle: { color: '#4a4548' }
+    },
+    grid: { left: 6, right: 42, top: 8, bottom: 4, containLabel: true },
+    xAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { color: '#f2ebe4' } },
+      axisLabel: { color: '#a89e9f', fontSize: 11 }
+    },
+    yAxis: {
+      type: 'category',
+      data: rows.map(r => r.name),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: '#4a4548', fontWeight: 600, fontSize: 12 }
+    },
+    series: [{
+      type: 'bar',
+      barWidth: 16,
+      data: rows.map(r => ({
+        value: r.value,
+        itemStyle: { color: r.color, borderRadius: [0, 8, 8, 0] }
+      })),
+      label: {
+        show: true,
+        position: 'right',
+        color: '#8a7f80',
+        fontSize: 12,
+        fontWeight: 600
+      },
+      animationDuration: prefersReducedMotion ? 0 : 700
+    }]
+  }, true)
+}
+
+const handleChartResize = () => {
+  if (overviewChart) overviewChart.resize()
 }
 
 // ===== 区块进入动画（IntersectionObserver）=====
@@ -586,37 +817,10 @@ const vReveal = {
   }
 }
 
-// ===== Hero 浮动卡片视差（mousemove + rAF 节流）=====
-const heroFloatRef = ref(null)
-let parallaxRAF = null
-let mouse = { x: 0, y: 0 }
-const onHeroMove = (e) => {
-  const rect = e.currentTarget.getBoundingClientRect()
-  mouse.x = (e.clientX - rect.left) / rect.width - 0.5
-  mouse.y = (e.clientY - rect.top) / rect.height - 0.5
-  if (parallaxRAF) return
-  parallaxRAF = requestAnimationFrame(() => {
-    parallaxRAF = null
-  })
-}
-const resetHero = () => { mouse.x = 0; mouse.y = 0 }
-const floatStyle = (i) => {
-  // 越靠后的卡片移动幅度越大，制造层次
-  const depth = 6 + i * 5
-  const tx = mouse.x * depth
-  const ty = mouse.y * depth
-  return { transform: `translate(${tx}px, ${ty}px)` }
-}
-
 // ===== 导航 =====
-const goSearch = (kw) => {
-  const q = (kw || '').trim()
-  router.push({ path: '/goods', query: q ? { goodsName: q } : {} })
-}
 const goSort = (sortBy) => router.push({ path: '/goods', query: { sortBy } })
 const goGoodsList = () => router.push('/goods')
 const goGoods = (id) => router.push(`/goods/${id}`)
-const goPublish = () => router.push('/seller')
 const goScene = (key) => router.push({ path: '/goods', query: { scene: key } })
 
 // ===== 数据加载 =====
@@ -629,7 +833,10 @@ const loadOverview = async () => {
       activeCampus.value = campuses.value[0]
       loadCampusGoods(activeCampus.value)
     }
-    nextTick(observeStats)
+    nextTick(() => {
+      observeStats()
+      renderOverviewChart()
+    })
   } catch (e) {
     overview.value = {}
   } finally {
@@ -796,12 +1003,31 @@ onMounted(() => {
   loadRecentViews()
   // hot/treasure/latest 加载完后统一回显收藏状态（校园专区加载完也会再调一次，幂等）
   Promise.all([loadHot(), loadTreasure(), loadLatest()]).then(loadFavoriteStates)
+
+  // 轮播自动播放（prefers-reduced-motion 时 startCarousel 内部会直接跳过）
+  startCarousel()
+  window.addEventListener('resize', handleChartResize)
+
+  // 首次进入首页的轻量彩带：会话级仅一次，动画结束自动移除
+  let played = false
+  try { played = sessionStorage.getItem('campus_home_confetti') === '1' } catch (e) { played = false }
+  if (!played && !prefersReducedMotion) {
+    try { sessionStorage.setItem('campus_home_confetti', '1') } catch (e) { /* 隐私模式忽略 */ }
+    setTimeout(() => { confettiVisible.value = true }, 600)
+    confettiTimer = setTimeout(dismissConfetti, 5200)
+  }
 })
 
 onBeforeUnmount(() => {
   if (revealObserver) revealObserver.disconnect()
   if (statsObserver) statsObserver.disconnect()
-  if (parallaxRAF) cancelAnimationFrame(parallaxRAF)
+  stopCarousel()
+  if (confettiTimer) clearTimeout(confettiTimer)
+  window.removeEventListener('resize', handleChartResize)
+  if (overviewChart) {
+    overviewChart.dispose()
+    overviewChart = null
+  }
 })
 </script>
 
@@ -874,61 +1100,7 @@ onBeforeUnmount(() => {
 .skel--tall { height: 360px; border-radius: 20px; }
 @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
-/* ========== Hero ========== */
-.hero {
-  position: relative;
-  border-radius: 28px;
-  overflow: hidden;
-  margin: 0 auto;
-  max-width: 1240px;
-  padding: 52px 44px;
-  color: var(--home-text);
-}
-.hero__bg {
-  position: absolute; inset: 0; z-index: 0;
-  background: linear-gradient(135deg, #fbf6f0 0%, #f7e1e3 30%, #f3e6d4 60%, #f5ead0 80%, #f5e7a8 100%);
-}
-.hero__inner {
-  position: relative; z-index: 1;
-  display: grid; grid-template-columns: 1.15fr 1fr; gap: 30px; align-items: center;
-}
-.hero__badge {
-  display: inline-block; padding: 5px 14px; border-radius: 999px;
-  background: rgba(255,255,255,.7); color: var(--home-primary-hover);
-  font-size: 12px; font-weight: 600; letter-spacing: .5px;
-  border: 1px solid rgba(232,180,184,.35);
-}
-.hero__title { font-size: 44px; font-weight: 800; margin: 16px 0 8px; line-height: 1.15; letter-spacing: 1px; }
-.hero__title-pink { color: var(--home-primary-hover); }
-.hero__title-dark { color: var(--home-text); }
-.hero__subtitle { font-size: 15px; color: var(--home-text-soft); margin: 0 0 22px; }
-.hero__search {
-  display: flex; align-items: center; gap: 0;
-  background: #fff; border-radius: 24px; padding: 6px 6px 6px 16px;
-  box-shadow: 0 10px 30px rgba(74,69,72,.08);
-  border: 2px solid transparent; transition: border-color .2s ease;
-}
-.hero__search:focus-within { border-color: var(--home-primary); }
-.hero__search-icon { color: var(--home-text-soft); font-size: 18px; }
-.hero__search-input {
-  flex: 1; border: none; outline: none; background: transparent;
-  font-size: 14px; padding: 8px 10px; color: var(--home-text);
-}
-.hero__search-btn {
-  border: none; cursor: pointer; border-radius: 18px;
-  padding: 10px 22px; font-size: 14px; font-weight: 600; color: #fff;
-  background: linear-gradient(135deg, var(--home-primary), var(--home-primary-hover));
-}
-.hero__search-btn:hover { filter: brightness(1.05); }
-.hero__chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-.hero__chip {
-  border: 1px solid var(--home-border); background: rgba(255,255,255,.6);
-  color: var(--home-text-soft); border-radius: 999px; padding: 5px 13px;
-  font-size: 12.5px; cursor: pointer; transition: all .2s ease;
-}
-.hero__chip:hover { color: var(--home-primary-hover); border-color: var(--home-primary); background: #fff; }
-.hero__cta { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
-
+/* ========== 通用按钮（轮播下方区块复用） ========== */
 .btn-primary {
   border: none; cursor: pointer; border-radius: 14px; padding: 12px 26px;
   font-size: 14.5px; font-weight: 600; color: #fff;
@@ -945,39 +1117,187 @@ onBeforeUnmount(() => {
 .btn-outline:hover { background: #fff; transform: translateY(-2px); }
 .btn-sm { padding: 7px 16px; font-size: 13px; border-radius: 12px; }
 
-/* 浮动卡片 */
-.hero__right { position: relative; height: 340px; }
-.float-card {
-  position: absolute; border-radius: 18px; overflow: hidden; cursor: pointer;
-  background: #fff; box-shadow: 0 14px 36px rgba(74,69,72,.14);
-  border: 4px solid #fff; transition: transform .25s ease;
+/* ========== 第一屏主视觉轮播 ========== */
+.hero-carousel {
+  position: relative;
+  max-width: 1220px;
+  height: clamp(340px, 36vw, 430px);
+  margin: 16px auto 0;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(74,69,72,.16);
+  outline: none;
 }
-.float-card__inner {
-  width: 100%; height: 100%; position: relative;
-  animation: floatBob 6s ease-in-out infinite;
+.hero-carousel:focus-visible { box-shadow: 0 18px 48px rgba(74,69,72,.16), 0 0 0 3px rgba(232,180,184,.55); }
+
+.hero-carousel__slide {
+  position: absolute; inset: 0;
+  display: grid; grid-template-columns: 1.05fr 0.95fr; align-items: center;
+  gap: 24px; padding: 40px 96px 40px 56px;
+  opacity: 0; transform: translateX(28px); pointer-events: none;
+  transition: opacity .55s ease, transform .55s ease;
 }
-@keyframes floatBob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+.hero-carousel__slide.is-active { opacity: 1; transform: none; pointer-events: auto; }
+.hero-carousel__slide--coral { background: var(--grad-coral-warm); }
+.hero-carousel__slide--violet { background: var(--grad-violet-pink); }
+.hero-carousel__slide--teal { background: var(--grad-teal-mint); }
+.hero-carousel__slide--amber { background: var(--grad-amber-honey); }
+
+/* 左：文案（渐变底上用白色系文字） */
+.hero-carousel__badge {
+  display: inline-block; padding: 5px 14px; border-radius: 999px;
+  background: rgba(255,255,255,.22); color: #fff;
+  font-size: 12.5px; font-weight: 600; letter-spacing: .06em;
+  border: 1px solid rgba(255,255,255,.38);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
-.float-card img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .4s ease; }
-.float-card img.is-loaded { opacity: 1; }
-.float-card__fallback {
-  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #f3e6d4, #ead9a0); color: var(--home-accent); font-size: 28px;
+.hero-carousel__title {
+  margin: 16px 0 10px; font-size: 38px; font-weight: 800; line-height: 1.2;
+  color: #fff; letter-spacing: .02em; text-shadow: 0 2px 14px rgba(0,0,0,.14);
 }
-.float-card__price {
-  position: absolute; left: 8px; bottom: 8px; background: rgba(255,255,255,.92);
-  border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; color: var(--home-accent);
+.hero-carousel__desc {
+  margin: 0 0 26px; font-size: 15px; line-height: 1.75;
+  color: rgba(255,255,255,.94); max-width: 430px;
 }
-.float-card--0 { width: 150px; height: 150px; top: 10px; right: 40px; z-index: 3; }
-.float-card--1 { width: 110px; height: 110px; top: 150px; right: 180px; z-index: 2; }
-.float-card--2 { width: 120px; height: 120px; top: 200px; right: 30px; z-index: 4; }
-.float-card--3 { width: 96px; height: 96px; top: 30px; right: 200px; z-index: 2; }
-.float-card--4 { width: 100px; height: 100px; top: 230px; right: 200px; z-index: 3; }
-.float-card--5 { width: 84px; height: 84px; top: 120px; right: 250px; z-index: 1; }
-.float-card--placeholder { background: linear-gradient(135deg,#f0e6df,#f7eee7); }
-.hero__float-skeleton .float-card { animation: floatBob 4s ease-in-out infinite; }
+.hero-carousel__cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; cursor: pointer; border-radius: 999px; padding: 12px 26px;
+  font-size: 14.5px; font-weight: 700; color: var(--home-text);
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 10px 24px rgba(0,0,0,.16);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.hero-carousel__cta:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0,0,0,.2); }
+
+/* 右：CSS 光斑 + 胶带相框实拍图卡 */
+.hero-carousel__visual {
+  position: relative; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+.hero-carousel__blob { position: absolute; border-radius: 50%; }
+.hero-carousel__blob--1 {
+  width: 250px; height: 250px; right: 4%; top: 6%;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,.5), rgba(255,255,255,0) 68%);
+  animation: heroBlobFloat 9s ease-in-out infinite;
+}
+.hero-carousel__blob--2 {
+  width: 160px; height: 160px; left: 0; bottom: 8%;
+  background: radial-gradient(circle at 40% 40%, rgba(255,255,255,.34), rgba(255,255,255,0) 70%);
+  animation: heroBlobFloat 12s ease-in-out infinite reverse;
+}
+@keyframes heroBlobFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(10px, -14px) scale(1.05); }
+}
+.hero-carousel__photo {
+  position: relative; z-index: 1;
+  width: min(330px, 90%);
+  background: #fff; border-radius: 10px; padding: 12px 12px 34px;
+  box-shadow: 0 20px 44px rgba(0,0,0,.24);
+  transform: rotate(-3deg);
+  transition: transform .35s ease;
+}
+.hero-carousel__slide.is-active .hero-carousel__photo:hover { transform: rotate(-1deg) scale(1.02); }
+.hero-carousel__photo img {
+  display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px;
+}
+.hero-carousel__tape {
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%) rotate(-2deg);
+  width: 96px; height: 26px; border-radius: 3px;
+  background: rgba(255,247,224,.85);
+  box-shadow: 0 2px 6px rgba(0,0,0,.12);
+  border-left: 1px dashed rgba(0,0,0,.08); border-right: 1px dashed rgba(0,0,0,.08);
+}
+
+/* 毛玻璃圆形箭头 */
+.hero-carousel__arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 3;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.42); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.22); color: #fff; font-size: 16px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transition: background .2s ease, transform .2s ease;
+}
+.hero-carousel__arrow:hover { background: rgba(255,255,255,.38); transform: translateY(-50%) scale(1.06); }
+.hero-carousel__arrow--prev { left: 20px; }
+.hero-carousel__arrow--next { right: 20px; }
+
+/* 胶囊指示器 + 当前项进度条 */
+.hero-carousel__dots {
+  position: absolute; left: 56px; bottom: 24px; z-index: 3;
+  display: flex; align-items: center; gap: 8px;
+}
+.hero-carousel__dot {
+  position: relative; width: 28px; height: 6px; padding: 0; border: none; cursor: pointer;
+  border-radius: 999px; background: rgba(255,255,255,.35); overflow: hidden;
+  transition: width .25s ease, background .25s ease;
+}
+.hero-carousel__dot.is-active { width: 52px; background: rgba(255,255,255,.26); }
+.hero-carousel__dot-progress {
+  position: absolute; inset: 0; transform-origin: left center;
+  background: rgba(255,255,255,.96); border-radius: 999px;
+  animation: heroDotProgress linear forwards;
+}
+@keyframes heroDotProgress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* ========== 平台数据（ECharts + 统计卡） ========== */
+.data-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: .08em;
+  color: var(--home-text-soft); background: #fff;
+  border: 1px solid var(--home-border); border-radius: 999px; padding: 5px 11px;
+}
+.data-live i {
+  width: 7px; height: 7px; border-radius: 50%; background: #8bbd9a;
+  box-shadow: 0 0 0 3px rgba(139,189,154,.18);
+  animation: livePulse 2s ease-out infinite;
+}
+@keyframes livePulse {
+  0% { box-shadow: 0 0 0 0 rgba(139,189,154,.35); }
+  70% { box-shadow: 0 0 0 6px rgba(139,189,154,0); }
+  100% { box-shadow: 0 0 0 0 rgba(139,189,154,0); }
+}
+
+.data-panel { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+.data-panel__chart {
+  background: #fff; border-radius: 20px; padding: 14px 16px;
+  box-shadow: 0 8px 24px rgba(74,69,72,.06); min-height: 268px;
+}
+.overview-chart { width: 100%; height: 240px; }
+.data-chart__skeleton { height: 240px; border-radius: 14px; }
+.data-chart__empty {
+  height: 240px; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--home-text-soft);
+}
+.data-panel__side { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.data-panel__side .stat-card { display: flex; flex-direction: column; justify-content: center; padding: 20px 14px; }
+.data-scope {
+  margin-top: 14px; padding: 10px 15px; border-radius: 14px;
+  font-size: 12px; line-height: 1.8; color: var(--home-text-soft);
+  background: rgba(255,255,255,.62); border: 1px dashed var(--home-border);
+}
+
+/* ========== 首次进入彩带 ========== */
+.confetti-layer { position: fixed; inset: 0; z-index: 2000; pointer-events: none; overflow: hidden; }
+.confetti {
+  position: absolute; top: -26px; border-radius: 2px; opacity: 0;
+  animation-name: confettiFall; animation-timing-function: ease-in;
+  animation-iteration-count: 1; animation-fill-mode: both;
+}
+@keyframes confettiFall {
+  0% { opacity: 1; transform: translateY(0) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(88vh) rotate(460deg); }
+}
+.confetti__close {
+  pointer-events: auto; position: fixed; right: 20px; bottom: 20px;
+  border: 1px solid var(--home-border); background: rgba(255,255,255,.92);
+  color: var(--home-text-soft); font-size: 12px; padding: 7px 14px;
+  border-radius: 999px; cursor: pointer; box-shadow: 0 6px 18px rgba(74,69,72,.12);
+}
+.confetti__close:hover { color: var(--home-primary-hover); }
+.confetti-fade-enter-active, .confetti-fade-leave-active { transition: opacity .4s ease; }
+.confetti-fade-enter-from, .confetti-fade-leave-to { opacity: 0; }
 
 /* ========== 大家最近都在看（1+4） ========== */
 .hot-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
@@ -988,11 +1308,11 @@ onBeforeUnmount(() => {
   display: flex; flex-direction: column; transition: transform .25s ease, box-shadow .25s ease;
 }
 .hot-main:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(74,69,72,.14); }
-.hot-main__cover { position: relative; height: 230px; background: linear-gradient(135deg,#f7e1e3,#f4d5d8); }
-.hot-main__cover img { width: 100%; height: 100%; object-fit: cover; }
-.hot-main__fallback { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--home-primary); font-size: 40px; }
+.hot-main__cover { position: relative; flex: 1 1 auto; min-height: 230px; background: linear-gradient(135deg,#f7e1e3,#f4d5d8); }
+.hot-main__cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hot-main__fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--home-primary); font-size: 40px; }
 .hot-main__tag { position: absolute; top: 12px; left: 12px; background: var(--home-primary); color: #fff; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 600; }
-.hot-main__body { padding: 16px 18px; }
+.hot-main__body { flex: 0 0 auto; padding: 16px 18px; }
 .hot-main__name { font-size: 17px; font-weight: 600; color: var(--home-text); }
 .hot-main__stats { display: flex; gap: 16px; margin: 8px 0; font-size: 13px; color: var(--home-text-soft); }
 .hot-main__stats span { display: inline-flex; align-items: center; gap: 4px; }
@@ -1091,7 +1411,6 @@ onBeforeUnmount(() => {
 .story-bar__num { font-size: 22px; font-weight: 800; color: var(--home-primary-hover); font-variant-numeric: tabular-nums; }
 
 /* ========== 平台数据 4 卡 ========== */
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .stat-card {
   background: #fff; border-radius: 18px; padding: 26px 18px; text-align: center;
   box-shadow: 0 4px 16px rgba(74,69,72,.05); transition: transform .25s ease;
@@ -1149,21 +1468,48 @@ onBeforeUnmount(() => {
 
 /* 响应式 */
 @media (max-width: 1100px) {
-  .hero__inner { grid-template-columns: 1fr; }
-  .hero__right { height: 260px; display: none; }
+  /* 右视觉区隐藏图卡、保留光斑装饰，文案居中 */
+  .hero-carousel { height: clamp(320px, 44vw, 400px); }
+  .hero-carousel__slide { grid-template-columns: 1fr; padding: 32px 84px; text-align: center; }
+  .hero-carousel__photo { display: none; }
+  .hero-carousel__badge { margin: 0 auto; }
+  .hero-carousel__desc { margin-left: auto; margin-right: auto; }
+  .hero-carousel__dots { left: 50%; transform: translateX(-50%); }
+  .hero-carousel__title { font-size: 30px; }
   .hot-grid { grid-template-columns: 1fr; }
   .treasure-grid, .goods-grid { grid-template-columns: repeat(2, 1fr); }
   .scene-grid { grid-template-columns: repeat(3, 1fr); }
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .data-panel { grid-template-columns: 1fr; }
   .tips-grid { grid-template-columns: 1fr 1fr; }
   .ai-entry { grid-template-columns: 1fr; }
   .ai-entry__right { display: none; }
 }
 @media (max-width: 640px) {
-  .hero { padding: 34px 22px; }
-  .hero__title { font-size: 32px; }
+  /* 高度随屏宽自适应，箭头内收、指示器靠左 */
+  .hero-carousel { height: clamp(300px, 82vw, 390px); margin-top: 12px; border-radius: 18px; }
+  .hero-carousel__slide { padding: 26px 56px 66px 26px; text-align: left; }
+  .hero-carousel__badge { margin: 0; }
+  .hero-carousel__title { font-size: 24px; margin: 12px 0 8px; }
+  .hero-carousel__desc { font-size: 13px; margin-bottom: 20px; }
+  .hero-carousel__cta { padding: 10px 20px; font-size: 13.5px; }
+  .hero-carousel__dots { left: 26px; bottom: 18px; transform: none; }
+  .hero-carousel__arrow { width: 34px; height: 34px; }
+  .hero-carousel__arrow--prev { left: 8px; }
+  .hero-carousel__arrow--next { right: 8px; }
   .treasure-grid, .goods-grid, .hot-side { grid-template-columns: 1fr 1fr; }
-  .scene-grid, .stat-grid, .tips-grid { grid-template-columns: 1fr 1fr; }
+  .scene-grid, .tips-grid { grid-template-columns: 1fr 1fr; }
   .block { padding: 24px 4px; }
+  .data-panel__side { grid-template-columns: 1fr 1fr; }
+  .overview-chart { height: 220px; }
+}
+
+/* 尊重减少动态效果偏好：关闭装饰性动画（业务切换仍可用） */
+@media (prefers-reduced-motion: reduce) {
+  .hero-carousel__slide { transition: none; }
+  .hero-carousel__blob { animation: none !important; }
+  .hero-carousel__dot-progress { animation: none !important; transform: scaleX(1); }
+  .data-live i { animation: none !important; }
+  .confetti { display: none; }
+  .block--reveal { opacity: 1; transform: none; transition: none; }
 }
 </style>

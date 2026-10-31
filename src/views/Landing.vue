@@ -104,7 +104,7 @@
               @click="goGoods(heroCards[0].goodsId)"
             >
               <div class="hc__bob" style="animation-delay:.2s">
-                <img v-if="heroCards[0].imageUrl" :src="heroCards[0].imageUrl" :alt="heroCards[0].goodsName" />
+                <img v-if="resolveGoodsImage(heroCards[0].imageUrl)" :src="resolveGoodsImage(heroCards[0].imageUrl)" :alt="heroCards[0].goodsName" @error="heroCards[0].imageUrl = ''" />
                 <div v-else class="hc__fallback hc__fallback--a"><el-icon><Picture /></el-icon></div>
                 <div class="hc__caption">
                   <span class="hc__name">{{ heroCards[0].goodsName }}</span>
@@ -120,7 +120,7 @@
               @click="goGoods(heroCards[1].goodsId)"
             >
               <div class="hc__bob" style="animation-delay:.9s">
-                <img v-if="heroCards[1].imageUrl" :src="heroCards[1].imageUrl" :alt="heroCards[1].goodsName" />
+                <img v-if="resolveGoodsImage(heroCards[1].imageUrl)" :src="resolveGoodsImage(heroCards[1].imageUrl)" :alt="heroCards[1].goodsName" @error="heroCards[1].imageUrl = ''" />
                 <div v-else class="hc__fallback hc__fallback--b"><el-icon><Picture /></el-icon></div>
                 <span class="hc__tag">{{ formatPrice(heroCards[1].price) }}</span>
               </div>
@@ -133,7 +133,7 @@
               @click="goGoods(heroCards[2].goodsId)"
             >
               <div class="hc__bob" style="animation-delay:1.6s">
-                <img v-if="heroCards[2].imageUrl" :src="heroCards[2].imageUrl" :alt="heroCards[2].goodsName" />
+                <img v-if="resolveGoodsImage(heroCards[2].imageUrl)" :src="resolveGoodsImage(heroCards[2].imageUrl)" :alt="heroCards[2].goodsName" @error="heroCards[2].imageUrl = ''" />
                 <div v-else class="hc__fallback hc__fallback--c"><el-icon><Picture /></el-icon></div>
                 <span class="hc__tag">{{ formatPrice(heroCards[2].price) }}</span>
               </div>
@@ -192,7 +192,7 @@
             @click="goGoods(feature.goodsId)"
           >
             <div class="feature__media">
-              <img v-if="feature.imageUrl" :src="feature.imageUrl" :alt="feature.goodsName" loading="lazy" />
+              <img v-if="resolveGoodsImage(feature.imageUrl)" :src="resolveGoodsImage(feature.imageUrl)" :alt="feature.goodsName" loading="lazy" @error="feature.imageUrl = ''" />
               <div v-else class="feature__nofeature"><el-icon><Picture /></el-icon></div>
             </div>
             <div class="feature__veil"></div>
@@ -219,7 +219,7 @@
               @click="goGoods(g.goodsId)"
             >
               <div class="mini__media">
-                <img v-if="g.imageUrl" :src="g.imageUrl" :alt="g.goodsName" loading="lazy" />
+                <img v-if="resolveGoodsImage(g.imageUrl)" :src="resolveGoodsImage(g.imageUrl)" :alt="g.goodsName" loading="lazy" @error="g.imageUrl = ''" />
                 <div v-else class="mini__fallback"><el-icon><Picture /></el-icon></div>
               </div>
               <div class="mini__info">
@@ -238,7 +238,7 @@
           >
             <span class="crow__no serif">0{{ i + 1 }}</span>
             <div class="crow__thumb">
-              <img v-if="g.imageUrl" :src="g.imageUrl" :alt="g.goodsName" loading="lazy" />
+              <img v-if="resolveGoodsImage(g.imageUrl)" :src="resolveGoodsImage(g.imageUrl)" :alt="g.goodsName" loading="lazy" @error="g.imageUrl = ''" />
               <div v-else class="crow__fallback"><el-icon><Picture /></el-icon></div>
             </div>
             <div class="crow__main">
@@ -463,6 +463,7 @@ import {
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 import { SCENES } from '../utils/scenes'
 
 const router = useRouter()

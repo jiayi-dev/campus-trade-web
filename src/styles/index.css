@@ -54,9 +54,54 @@
     #aa8d92 100%
   );
 
+  /* V1.3.2 登录后侧边栏统一规范：浅粉→奶油黄单源令牌
+   * （登录页左侧品牌区的深玫瑰渐变仍用 --brand-sidebar-gradient，互不影响） */
+  --brand-sidebar-surface:
+    radial-gradient(120% 32% at 100% 0%, rgba(248, 216, 221, 0.60), transparent 72%),
+    radial-gradient(130% 30% at 0% 100%, rgba(243, 224, 184, 0.65), transparent 74%),
+    linear-gradient(180deg, #fdf2ef 0%, #fbf0ec 42%, #f9f0e4 72%, #f7ecd8 100%);
+  --brand-sidebar-border: #f2e0de;
+  --brand-sidebar-hover: #f8ecec;
+  --brand-sidebar-active-bg: linear-gradient(90deg, #f6dee2 0%, #f9e8ea 100%);
+  --brand-sidebar-active-text: #b55a66;
+
   --brand-font:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ========== ①.5 V1.3 多色校园体系（页面级主题色板） ==========
+ * 在奶油底 + 浅粉主色之上扩展低饱和协调色系：
+ * 紫罗兰（灵感/社区）、青绿（环保/注册）、珊瑚橙（活力/市场）、
+ * 暖黄（求购/价格）、天空蓝（数码/信任）。
+ * 全部控制饱和度，仅作为页面主题色与装饰色，不改变品牌主色。 */
+:root {
+  --campus-violet: #8b7fc0;
+  --campus-violet-soft: #ede9f8;
+  --campus-violet-deep: #6b5fa0;
+
+  --campus-teal: #5fa89a;
+  --campus-teal-soft: #e0f2ee;
+  --campus-teal-deep: #47857a;
+
+  --campus-coral: #e08e79;
+  --campus-coral-soft: #fbe8e0;
+  --campus-coral-deep: #c96f5c;
+
+  --campus-amber: #d9a441;
+  --campus-amber-soft: #f9efd7;
+  --campus-amber-deep: #b8862e;
+
+  --campus-sky: #7fa3c7;
+  --campus-sky-soft: #e5eef8;
+  --campus-sky-deep: #5d83a8;
+
+  /* 常用页面级渐变（低饱和、同明度过渡） */
+  --grad-violet-pink: linear-gradient(120deg, #8b7fc0 0%, #c9a0b4 55%, #d8a8ad 100%);
+  --grad-teal-mint: linear-gradient(120deg, #47857a 0%, #5fa89a 60%, #9ecfc2 100%);
+  --grad-coral-warm: linear-gradient(120deg, #c96f5c 0%, #e08e79 55%, #f0b9a0 100%);
+  --grad-amber-honey: linear-gradient(120deg, #b8862e 0%, #d9a441 55%, #eec978 100%);
+  --grad-sky-calm: linear-gradient(120deg, #5d83a8 0%, #7fa3c7 60%, #aec8e2 100%);
 }
 
 /* ========== ② Element Plus 主题覆盖 ========== */
@@ -451,4 +496,264 @@ a {
   .auth-form {
     padding: 34px 26px;
   }
+}
+
+/* ============================================================
+ * V1.2 登录 / 注册页视觉升级
+ * ------------------------------------------------------------
+ * 背景：奶油粉 → 奶杏 → 浅米杏的分层渐变 + 低密度光点 + 缓慢漂移光晕
+ * 性能：只动 transform / opacity，支持 prefers-reduced-motion
+ * ============================================================ */
+
+.auth-page {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #fbeae6 0%, #fbf2ea 45%, #fdf6e3 100%);
+}
+
+.auth-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(216, 168, 173, 0.42), transparent 38%),
+    radial-gradient(circle at 85% 15%, rgba(201, 168, 92, 0.32), transparent 36%),
+    radial-gradient(circle at 75% 90%, rgba(230, 190, 170, 0.34), transparent 42%);
+  animation: auth-aurora 22s ease-in-out infinite alternate;
+}
+
+@keyframes auth-aurora {
+  from { transform: translate3d(-1.5%, -1%, 0) scale(1.02); }
+  to   { transform: translate3d(1.5%, 1.5%, 0) scale(1.08); }
+}
+
+.auth-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.auth-bg__orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(38px);
+  opacity: 0.5;
+  animation: auth-orb-float 16s ease-in-out infinite;
+}
+
+.auth-bg__orb--1 {
+  width: 320px; height: 320px;
+  left: -90px; top: 8%;
+  background: rgba(216, 168, 173, 0.55);
+}
+
+.auth-bg__orb--2 {
+  width: 260px; height: 260px;
+  right: -80px; bottom: 6%;
+  background: rgba(201, 168, 92, 0.35);
+  animation-delay: -6s;
+}
+
+.auth-bg__orb--3 {
+  width: 200px; height: 200px;
+  right: 18%; top: -60px;
+  background: rgba(248, 220, 196, 0.6);
+  animation-delay: -11s;
+}
+
+@keyframes auth-orb-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-22px); }
+}
+
+.auth-bg__spark {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(216, 168, 173, 0.75);
+  box-shadow: 0 0 12px rgba(216, 168, 173, 0.55);
+  animation: auth-spark 9s ease-in-out infinite;
+}
+
+@keyframes auth-spark {
+  0%, 100% { transform: translateY(0) scale(0.8); opacity: 0.35; }
+  50%      { transform: translateY(-26px) scale(1.15); opacity: 0.9; }
+}
+
+.auth-card {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 30px 80px rgba(150, 110, 100, 0.18);
+  animation: auth-card-in 0.6s cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+
+@keyframes auth-card-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 左侧品牌区改为暖色渐变，与奶油粉视觉体系一致 */
+.auth-brand {
+  background: linear-gradient(150deg, #b98b90 0%, #cf9f9a 44%, #d9b985 100%);
+}
+
+.auth-brand__title {
+  font-size: 30px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 12px rgba(120, 70, 70, 0.18);
+}
+
+.auth-brand__feature {
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(4px);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.auth-brand__feature:hover {
+  transform: translateX(4px);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* 右侧表单细节：输入框聚焦反馈 + 按钮微交互 */
+.auth-form {
+  background: linear-gradient(180deg, #fffdfb 0%, #ffffff 100%);
+}
+
+.auth-form__title {
+  font-size: 24px;
+  letter-spacing: 0.5px;
+}
+
+.auth-form .el-input__wrapper {
+  border-radius: 12px;
+  padding: 2px 14px;
+  background: #fdf8f3;
+  box-shadow: 0 0 0 1px #f0e3d8 inset;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.auth-form .el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px #edd3d5 inset;
+}
+
+.auth-form .el-input__wrapper.is-focus {
+  background: #fff;
+  box-shadow: 0 0 0 1.5px #d8a8ad inset, 0 6px 18px rgba(216, 168, 173, 0.22);
+}
+
+.auth-form .el-button--primary {
+  height: 44px;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  border: none;
+  background: linear-gradient(120deg, #d8a8ad 0%, #e0b48f 100%);
+  box-shadow: 0 10px 24px rgba(216, 168, 173, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.auth-form .el-button--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(216, 168, 173, 0.45);
+  filter: brightness(1.03);
+}
+
+.auth-form .el-button--primary:active {
+  transform: translateY(0);
+}
+
+.auth-form__footer a {
+  color: #b9838a;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-form__footer a:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-page::before,
+  .auth-bg__orb,
+  .auth-bg__spark,
+  .auth-card {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+ * 个人下拉菜单（el-dropdown 传送到 body，必须全局样式）
+ * ============================================================ */
+
+.user-menu-popper {
+  padding: 0 !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+  border: 1px solid var(--brand-border, #f0e3d8);
+  box-shadow: 0 20px 50px rgba(74, 69, 72, 0.18) !important;
+}
+
+.user-menu {
+  width: 252px;
+  background: #fff;
+}
+
+.user-menu__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #fbeae6 0%, #fdf6e3 100%);
+  border-bottom: 1px solid var(--brand-border, #f0e3d8);
+}
+
+.user-menu__avatar {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(150deg, #b98b90, #d9b985);
+  color: #fff;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 12px rgba(150, 110, 100, 0.22);
+}
+
+.user-menu__avatar img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+.user-menu__name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brand-text, #3d3536);
+}
+
+.user-menu__sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--brand-text-secondary, #8a7f7c);
+}
+
+.user-menu__list {
+  padding: 6px;
+}
+
+.user-menu-popper .el-dropdown-menu__item {
+  border-radius: 10px;
+  font-size: 13px;
+  padding: 9px 12px;
+}
+
+.user-menu-popper .el-dropdown-menu__item:not(.is-disabled):hover {
+  background: #fbf2ea;
+  color: #b9838a;
 }

@@ -14,21 +14,32 @@
           <div class="brand__sub">CAMPUS TRADE</div>
         </div>
       </div>
+      <div class="brand__tagline">
+        <span class="brand__tagline-dot"></span>
+        同校好物 · 当面交易
+      </div>
 
-      <!-- 角色菜单 -->
+      <!-- 角色菜单：按业务分组，仍由 roles 过滤 -->
       <el-menu
         class="nav-menu"
         router
         :default-active="$route.path"
       >
-        <el-menu-item
-            v-for="menu in visibleMenus"
-            :key="menu.path"
-            :index="menu.path"
-        >
-          <el-icon><component :is="menu.icon" /></el-icon>
-          <span>{{ menu.name }}</span>
-        </el-menu-item>
+        <template v-for="group in visibleMenuGroups" :key="group.name">
+          <li v-if="group.name" class="nav-group__title">{{ group.name }}</li>
+          <el-menu-item
+              v-for="menu in group.menus"
+              :key="menu.path"
+              :index="menu.path"
+          >
+            <el-icon><component :is="menu.icon" /></el-icon>
+            <span>{{ menu.name }}</span>
+            <!-- 未读红点：消息中心=未读会话数；管理后台=待审核卖家申请数 -->
+            <span v-if="menuBadge(menu.path) > 0" class="nav-badge">
+              {{ menuBadge(menu.path) > 99 ? '99+' : menuBadge(menu.path) }}
+            </span>
+          </el-menu-item>
+        </template>
       </el-menu>
 
       <!-- 游客模式：登录 / 注册入口 -->
@@ -38,7 +49,7 @@
       </div>
 
       <!-- 侧边栏底部版本信息 -->
-      <div class="sidebar__footer">V1.1 产品增强版</div>
+      <div class="sidebar__footer">V1.3 全站体验版</div>
 
     </aside>
 
@@ -51,10 +62,28 @@
           {{ currentTitle }}
         </div>
 
-        <el-dropdown v-if="isLoggedIn" trigger="click" @command="handleCommand">
+        <!-- 头像上传的隐藏文件选择器：复用 /api/upload/image 上传能力 -->
+        <input
+            ref="avatarInputRef"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            class="avatar-input"
+            @change="handleAvatarChange"
+        />
+
+        <el-dropdown v-if="isLoggedIn" trigger="click" popper-class="user-menu-popper" @command="handleCommand">
           <div class="user">
-            <div class="user__avatar">
-              {{ username.charAt(0).toUpperCase() }}
+            <div class="user__avatar-wrap">
+              <span class="user__avatar-ring"></span>
+              <img
+                  v-if="avatarUrl"
+                  :src="avatarUrl"
+                  class="user__avatar-img"
+                  alt="我的头像"
+                  @error="avatarUrl = ''"
+              />
+              <div v-else class="user__avatar">{{ avatarLetter }}</div>
+              <span class="user__avatar-dot"></span>
             </div>
             <div class="user__meta">
               <div class="user__name">{{ username }}</div>
@@ -72,20 +101,53 @@
           </div>
 
           <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item disabled>
-                <el-icon><UserFilled /></el-icon>
-                {{ roleLabel }} · {{ username }}
-              </el-dropdown-item>
-              <el-dropdown-item command="profile" divided>
-                <el-icon><User /></el-icon>
-                个人中心
-              </el-dropdown-item>
-              <el-dropdown-item command="logout" divided>
-                <el-icon><SwitchButton /></el-icon>
-                退出登录
-              </el-dropdown-item>
-            </el-dropdown-menu>
+            <div class="user-menu">
+              <div class="user-menu__head">
+                <div class="user-menu__avatar">
+                  <img v-if="avatarUrl" :src="avatarUrl" alt="头像" />
+                  <span v-else>{{ avatarLetter }}</span>
+                </div>
+                <div class="user-menu__identity">
+                  <div class="user-menu__name">{{ username }}</div>
+                  <div class="user-menu__sub">{{ roleLabel }} · ID {{ userIdLabel }}</div>
+                </div>
+              </div>
+
+              <el-dropdown-menu class="user-menu__list">
+                <el-dropdown-item command="profile">
+                  <el-icon><User /></el-icon>
+                  个人中心与账号设置
+                </el-dropdown-item>
+                <el-dropdown-item v-if="isSeller" command="seller">
+                  <el-icon><Shop /></el-icon>
+                  我的店铺 / 商品管理
+                </el-dropdown-item>
+                <el-dropdown-item v-else command="publish">
+                  <el-icon><CirclePlus /></el-icon>
+                  我的发布
+                </el-dropdown-item>
+                <el-dropdown-item command="collections">
+                  <el-icon><Star /></el-icon>
+                  我的收藏
+                </el-dropdown-item>
+                <el-dropdown-item command="orders">
+                  <el-icon><Tickets /></el-icon>
+                  我的订单
+                </el-dropdown-item>
+                <el-dropdown-item command="messages">
+                  <el-icon><ChatDotRound /></el-icon>
+                  消息中心
+                </el-dropdown-item>
+                <el-dropdown-item command="avatar" divided :disabled="avatarUploading">
+                  <el-icon><Camera /></el-icon>
+                  {{ avatarUploading ? '头像上传中…' : '更换头像' }}
+                </el-dropdown-item>
+                <el-dropdown-item command="logout" divided>
+                  <el-icon><SwitchButton /></el-icon>
+                  退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </div>
           </template>
         </el-dropdown>
 
@@ -108,15 +170,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import {
   HomeFilled,
   ShoppingBag,
   Tickets,
   Shop,
   Setting,
-  UserFilled,
   SwitchButton,
   ArrowDown,
   RefreshRight,
@@ -131,15 +193,49 @@ import {
   ChatLineSquare,
   Star,
   Lock,
-  DataAnalysis
+  DataAnalysis,
+  Camera
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
+import {
+  avatarState,
+  loadCurrentAvatar,
+  uploadAndSaveAvatar,
+  clearAvatar
+} from '../utils/avatar'
 
 const router = useRouter()
 const route = useRoute()
 
+// 路由切换时重置主区域滚动位置：
+// .content 是全局唯一的真实滚动容器且跨路由复用（Layout 不卸载），router 的
+// scrollBehavior 只作用于 window，对它无效。不重置的话，从列表页底部点进详情页，
+// 详情页会"继承"列表页的滚动位置，看起来像自动滚到了留言区。
+// 例外：返回商品列表 /goods 时跳过——GoodsList 有自己的滚动位置恢复逻辑
+//（返回按钮 /goods?restore=1 或浏览器后退 + history.state 标记），
+// 它会读取快照自行还原，这里若先重置会造成闪烁，交由它自己处理。
+watch(() => route.path, (toPath) => {
+  if (toPath === '/goods') return
+  nextTick(() => {
+    const scroller = document.querySelector('.content')
+    if (scroller) scroller.scrollTop = 0
+  })
+})
+
 const username = ref(localStorage.getItem('username') || '')
 const role = ref(localStorage.getItem('role') || '')
+
+// 头像：全局共享状态（与个人中心共用），服务端持久化，刷新 / 重新登录后仍然存在
+const avatarUrl = computed({
+  get: () => avatarState.url,
+  set: (value) => { avatarState.url = value || '' }
+})
+const avatarInputRef = ref(null)
+const avatarUploading = computed(() => avatarState.uploading)
+
+const avatarLetter = computed(() => (username.value || '同').charAt(0).toUpperCase())
+const userIdLabel = computed(() => localStorage.getItem('userId') || '--')
+const isSeller = computed(() => role.value === 'seller' || role.value === 'admin')
 
 // 游客模式：未登录时侧边栏显示登录/注册入口，顶部栏显示登录/注册按钮
 // 已登录则走原有的用户头像+下拉退出流程
@@ -178,12 +274,69 @@ onMounted(() => {
   // 游客只能访问 /goods 和 /goods/:id，菜单为空，无需校准角色
   if (isLoggedIn.value) {
     refreshRoleFromServer()
+    loadAvatar()
+    refreshBadges()
+    // 30s 轮询未读数：消息/申请没有推送通道，轻量轮询即可满足提示需求
+    badgeTimer = setInterval(refreshBadges, 30000)
   }
   window.addEventListener('role-changed', handleRoleChanged)
+  // 消息中心内读完会话时派发的事件：左侧红点即时消除，不用等 30s 轮询或离开页面
+  window.addEventListener('chat-unread-changed', refreshBadges)
+  // 管理后台内审完卖家申请时派发的事件：同理即时消除
+  window.addEventListener('seller-application-changed', refreshBadges)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('role-changed', handleRoleChanged)
+  window.removeEventListener('chat-unread-changed', refreshBadges)
+  window.removeEventListener('seller-application-changed', refreshBadges)
+  if (badgeTimer) {
+    clearInterval(badgeTimer)
+    badgeTimer = null
+  }
+})
+
+// =========================
+// 侧边栏红点提示
+// - 消息中心：GET /chat/unread 未读会话总数（所有登录用户）
+// - 管理后台：GET /admin/seller-applications?status=0 待审核申请数（仅 admin）
+// 进入对应页面后重新拉取，读完消息/审完申请红点即消
+// =========================
+const unreadMsgCount = ref(0)
+const pendingApplyCount = ref(0)
+let badgeTimer = null
+
+const menuBadge = (path) => {
+  if (path === '/messages') return unreadMsgCount.value
+  if (path === '/admin') return pendingApplyCount.value
+  return 0
+}
+
+const refreshBadges = async () => {
+  if (!isLoggedIn.value) return
+  try {
+    const unread = await request.get('/chat/unread')
+    unreadMsgCount.value = Number(unread?.total ?? unread) || 0
+  } catch (e) {
+    // 消息模块未启用（chat 表缺失）时静默，不打扰其他页面
+  }
+  if (role.value === 'admin') {
+    try {
+      const res = await request.get('/admin/seller-applications', {
+        params: { status: 0, pageNum: 1, pageSize: 1 }
+      })
+      pendingApplyCount.value = Number(res?.total) || 0
+    } catch (e) {
+      // 非管理员或接口异常时静默
+    }
+  }
+}
+
+// 路由切换后刷新红点：读完消息 / 审完申请回到其他页面时红点立即消除
+watch(() => route.path, (toPath, fromPath) => {
+  if (isLoggedIn.value && (fromPath === '/messages' || fromPath === '/admin')) {
+    refreshBadges()
+  }
 })
 
 // 菜单配置：名称 / 路径 / 允许角色 / 图标
@@ -320,6 +473,40 @@ const visibleMenus = computed(() => {
   return menus.filter(menu => menu.roles.includes(role.value))
 })
 
+// 菜单分组：只改变展示层次，不改变权限过滤规则
+const MENU_GROUPS = [
+  { name: '逛与发现', paths: ['/home', '/goods', '/wanted', '/discover'] },
+  { name: '社区与工具', paths: ['/community', '/messages', '/safety', '/ai-assistant'] },
+  { name: '交易与经营', paths: ['/orders', '/orders/center', '/goods/publish', '/seller-apply', '/seller', '/seller/dashboard'] },
+  { name: '我的', paths: ['/me/collections'] },
+  { name: '平台管理', paths: ['/admin', '/admin/analytics'] }
+]
+
+const visibleMenuGroups = computed(() => {
+  const visible = visibleMenus.value
+
+  // 游客菜单不分组，保持简洁
+  if (!isLoggedIn.value) {
+    return [{ name: '', menus: visible }]
+  }
+
+  const groups = MENU_GROUPS
+      .map(group => ({
+        name: group.name,
+        menus: visible.filter(menu => group.paths.includes(menu.path))
+      }))
+      .filter(group => group.menus.length)
+
+  // 兜底：未归入任何分组的菜单仍要显示，避免新增菜单被隐藏
+  const grouped = new Set(groups.flatMap(group => group.menus.map(menu => menu.path)))
+  const rest = visible.filter(menu => !grouped.has(menu.path))
+  if (rest.length) {
+    groups.push({ name: '其他', menus: rest })
+  }
+
+  return groups
+})
+
 // 顶部栏显示当前页面标题（来自路由 meta.title）
 const currentTitle = computed(() => route.meta.title || '校园二手交易平台')
 
@@ -339,12 +526,71 @@ const roleLabel = computed(() => roleLabelMap[role.value] || '用户')
 const roleTagType = computed(() => roleTagTypeMap[role.value] || 'info')
 
 const handleCommand = (command) => {
+
   if (command === 'profile') {
     router.push('/profile')
     return
   }
+
+  if (command === 'seller') {
+    router.push('/seller')
+    return
+  }
+
+  if (command === 'publish') {
+    router.push('/goods/publish')
+    return
+  }
+
+  if (command === 'collections') {
+    router.push('/me/collections')
+    return
+  }
+
+  if (command === 'orders') {
+    router.push('/orders/center')
+    return
+  }
+
+  if (command === 'messages') {
+    router.push('/messages')
+    return
+  }
+
+  if (command === 'avatar') {
+    avatarInputRef.value?.click()
+    return
+  }
+
   if (command === 'logout') {
     handleLogout()
+  }
+}
+
+// =========================
+// 头像：读取 / 上传 / 保存
+// =========================
+
+const loadAvatar = async () => {
+  // 共享状态已有值时直接复用，避免每个用到头像的页面重复请求
+  await loadCurrentAvatar()
+}
+
+const handleAvatarChange = async (event) => {
+
+  const file = event.target.files && event.target.files[0]
+
+  // 允许连续选择同一个文件时也能触发 change
+  event.target.value = ''
+
+  if (!file) return
+
+  try {
+    // 上传 + 保存 + 同步全局头像状态由 avatar.js 统一处理
+    await uploadAndSaveAvatar(file)
+    ElMessage.success('头像已更新')
+  } catch (error) {
+    ElMessage.error(error?.message || '头像上传失败，请稍后再试')
   }
 }
 
@@ -354,6 +600,7 @@ const handleLogout = () => {
   localStorage.removeItem('userId')
   localStorage.removeItem('username')
   localStorage.removeItem('role')
+  clearAvatar()
 
   router.push('/login')
 }
@@ -367,15 +614,18 @@ const handleLogout = () => {
   overflow: hidden;
 }
 
-/* ========== 侧边栏 ========== */
+/* ========== 侧边栏（V1.3.1 浅粉奶黄轻盈风） ========== */
 
 .sidebar {
-  width: 224px;
+  width: 232px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--brand-sidebar-gradient);
-  box-shadow: 4px 0 24px rgba(11, 59, 57, 0.18);
+  /* V1.3.2：浅粉奶黄单源令牌——顶部浅樱粉光晕 + 底部奶油黄光晕，
+     与登录注册页同一品牌色系，选中/悬浮态同样走令牌 */
+  background: var(--brand-sidebar-surface);
+  border-right: 1px solid var(--brand-sidebar-border);
+  box-shadow: 4px 0 18px rgba(180, 140, 130, 0.06);
   position: relative;
   z-index: 10;
 }
@@ -385,25 +635,27 @@ const handleLogout = () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 22px 20px 20px;
+  padding: 22px 20px 0;
 }
 
 .brand__badge {
   width: 42px;
   height: 42px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 13px;
+  /* 浅粉→奶油黄柔和渐变徽章 */
+  background: linear-gradient(145deg, #f8d8dd 0%, #f3e0b8 100%);
+  border: 1px solid rgba(216, 168, 173, 0.35);
+  box-shadow: 0 4px 12px rgba(216, 168, 173, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
-  color: #fff;
+  color: #b5838a;
   flex-shrink: 0;
 }
 
 .brand__name {
-  color: #fff;
+  color: var(--brand-text);
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -412,9 +664,31 @@ const handleLogout = () => {
 
 .brand__sub {
   margin-top: 3px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--brand-text-secondary);
   font-size: 10px;
   letter-spacing: 1.6px;
+}
+
+/* 品牌区标语：一行轻量说明，浅粉胶囊 */
+.brand__tagline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 20px 4px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #f8e6e8;
+  color: #a07578;
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  align-self: flex-start;
+}
+
+.brand__tagline-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--brand-primary);
 }
 
 /* 菜单 */
@@ -422,39 +696,83 @@ const handleLogout = () => {
   flex: 1;
   border-right: none;
   background: transparent;
-  padding: 8px 12px;
+  padding: 10px 12px 8px;
+  overflow-y: auto;
+}
+
+/* 分组标题：暖灰小字，层次清晰不刺眼 */
+.nav-group__title {
+  list-style: none;
+  margin: 12px 0 4px;
+  padding-left: 12px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  color: #b8a8a4;
+}
+
+.nav-group__title:first-child {
+  margin-top: 2px;
 }
 
 .nav-menu :deep(.el-menu-item) {
-  height: 46px;
-  line-height: 46px;
-  margin-bottom: 6px;
+  height: 42px;
+  line-height: 42px;
+  margin-bottom: 2px;
   border-radius: 10px;
-  color: rgba(255, 255, 255, 0.72);
-  transition: all 0.2s ease;
+  color: #5c4f52;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .nav-menu :deep(.el-menu-item .el-icon) {
   font-size: 17px;
-  color: inherit;
+  color: #a89598;
+  transition: transform 0.2s ease, color 0.2s ease;
 }
 
 .nav-menu :deep(.el-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--brand-sidebar-hover);
+  color: var(--brand-text);
 }
 
+.nav-menu :deep(.el-menu-item:hover .el-icon) {
+  transform: translateX(2px);
+  color: var(--brand-primary);
+}
+
+/* 选中态：浅粉底 + 左侧粉色强调线（令牌统一） */
 .nav-menu :deep(.el-menu-item.is-active) {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  background: var(--brand-sidebar-active-bg);
+  color: var(--brand-sidebar-active-text);
   font-weight: 600;
-  box-shadow: inset 3px 0 0 var(--brand-accent);
+  box-shadow: inset 3px 0 0 var(--brand-primary);
+}
+
+.nav-menu :deep(.el-menu-item.is-active .el-icon) {
+  color: var(--brand-sidebar-active-text);
+  transform: none;
+}
+
+/* 未读红点：菜单项右侧的计数胶囊，与全站浅粉主色一致 */
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(216, 168, 173, 0.45);
 }
 
 .sidebar__footer {
   padding: 16px 20px 20px;
   text-align: center;
-  color: rgba(255, 255, 255, 0.4);
+  color: #b8a8a4;
   font-size: 12px;
   letter-spacing: 0.5px;
 }
@@ -472,7 +790,7 @@ const handleLogout = () => {
 .header {
   height: 62px;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 254, 252, 0.94);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--brand-border);
   display: flex;
@@ -503,17 +821,79 @@ const handleLogout = () => {
   background: var(--brand-bg-soft);
 }
 
+.user__avatar-wrap {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 头像外圈：缓慢旋转的虚线光环 */
+.user__avatar-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--brand-primary);
+  opacity: 0.55;
+  animation: avatar-ring-spin 18s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes avatar-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 首字母头像底色：与徽章一致的粉黄渐变 */
 .user__avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--brand-sidebar-gradient);
+  background: linear-gradient(145deg, #e8b4b8 0%, #ecc99c 100%);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.user__avatar-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(180, 140, 130, 0.20);
+}
+
+/* 右下角呼吸小圆点：表示账号在线 */
+.user__avatar-dot {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #7bbf8e;
+  border: 2px solid #fff;
+  animation: avatar-dot-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes avatar-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.18); opacity: 0.75; }
+}
+
+.avatar-input {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user__avatar-ring,
+  .user__avatar-dot { animation: none; }
 }
 
 .user__meta {
@@ -566,25 +946,26 @@ const handleLogout = () => {
   font-weight: 600;
   letter-spacing: 0.5px;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #f8ecec;
+  color: var(--brand-text);
+  border: 1px solid #f0dfe0;
   transition: all 0.2s ease;
 }
 
 .guest-nav__link:hover {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: #f4e0e2;
+  color: #b55a66;
 }
 
 .guest-nav__link--register {
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--brand-text, #2b4a4a);
+  background: linear-gradient(120deg, #d8a0a8 0%, #ecc99c 100%);
+  color: #fff;
   border-color: transparent;
 }
 
 .guest-nav__link--register:hover {
-  background: #fff;
+  filter: brightness(1.05);
+  color: #fff;
 }
 
 /* ========== 游客模式：顶部栏登录/注册按钮 ========== */
@@ -619,7 +1000,7 @@ const handleLogout = () => {
 }
 
 .header__guest-register {
-  background: var(--brand-sidebar-gradient);
+  background: linear-gradient(120deg, #d8a0a8 0%, #ecc99c 100%);
   color: #fff;
 }
 
@@ -652,6 +1033,8 @@ const handleLogout = () => {
   }
 
   .brand__text,
+  .brand__tagline,
+  .nav-group__title,
   .sidebar__footer,
   .nav-menu :deep(.el-menu-item span) {
     display: none;

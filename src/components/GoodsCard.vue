@@ -9,8 +9,8 @@
     <!-- 封面区：有主图显示图片，无图用分类色块占位 -->
     <div class="goods-card__cover" :class="`cover--${coverTheme}`">
       <img
-          v-if="goods.imageUrl && !imgError"
-          :src="goods.imageUrl"
+          v-if="coverUrl && !imgError"
+          :src="coverUrl"
           :alt="goods.goodsName"
           class="goods-card__image"
           @error="handleImgError"
@@ -124,6 +124,7 @@ import {
   Star, StarFilled, View, Location, Position, Folder
 } from '@element-plus/icons-vue'
 import { formatPrice, formatRelativeTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 
 const router = useRouter()
 
@@ -156,10 +157,16 @@ const props = defineProps({
   }
 })
 
-defineEmits(['edit', 'delete', 'toggle-favorite'])
+const emit = defineEmits(['edit', 'delete', 'toggle-favorite', 'preview'])
 
 // 进入商品详情 /goods/:id
+// 无真实 goodsId（如发布向导的实时预览卡 goodsId=0）时不跳路由，
+// 改为抛出 preview 事件，由父组件打开本地预览弹窗
 const goDetail = () => {
+  if (!props.goods.goodsId) {
+    emit('preview')
+    return
+  }
   router.push(`/goods/${props.goods.goodsId}`)
 }
 
@@ -184,6 +191,9 @@ const coverTheme = computed(() => {
   const seed = props.goods.categoryId ?? props.goods.goodsId ?? 0
   return coverThemes[Math.abs(seed) % coverThemes.length]
 })
+
+// 统一解析图片地址：不可访问的旧图床（Trae 内部接口）按无图处理
+const coverUrl = computed(() => resolveGoodsImage(props.goods.imageUrl))
 
 // 图片加载失败时切换到色块占位
 const imgError = ref(false)
@@ -213,10 +223,11 @@ const handleImgError = () => {
   box-shadow: var(--brand-shadow);
 }
 
-/* 封面 */
+/* 封面：全站统一 4:3 比例（替代固定 160px 高度，避免不同列宽下比例不一致） */
 .goods-card__cover {
   position: relative;
-  height: 160px;
+  width: 100%;
+  aspect-ratio: 4 / 3;
   display: flex;
   flex-direction: column;
   align-items: center;

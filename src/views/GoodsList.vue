@@ -296,8 +296,8 @@
 
     </el-card>
 
-    <!-- 7. 分页 -->
-    <div v-if="total > 0" class="pagination">
+    <!-- 7. 分页：不足一页时不出分页栏，页面自然结束 -->
+    <div v-if="total > pageSize" class="pagination">
       <el-pagination
           v-model:current-page="pageNum"
           :page-size="pageSize"
@@ -547,7 +547,8 @@ const campuses = ref([])
 const goodsList = ref([])
 
 const pageNum = ref(1)
-const pageSize = ref(12)
+// V1.3.2：每页 16 条（桌面 4 列 × 4 行），与商品中心网格布局对齐
+const pageSize = ref(16)
 const total = ref(0)
 const loading = ref(false)
 
@@ -870,7 +871,7 @@ const applySnapshot = (snap) => {
   campus.value = snap.campus || null
   sortBy.value = VALID_SORTS.includes(snap.sortBy) ? snap.sortBy : 'latest'
   pageNum.value = snap.pageNum || 1
-  pageSize.value = snap.pageSize || 12
+  pageSize.value = snap.pageSize || 16
   viewMode.value = snap.viewMode === 'table' ? 'table' : 'card'
   activeScene.value = findScene(snap.sceneKey)
 }
@@ -1489,10 +1490,24 @@ onMounted(async () => {
   min-height: 260px;
 }
 
+/* 商品网格：桌面固定每行 4 张（与 pageSize=16 即 4×4 对齐），
+   宽度不足按断点降为 3 / 2 / 1 列；等宽列布局，不足一行不拉伸 */
 .goods-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
+}
+
+@media (max-width: 1320px) {
+  .goods-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 980px) {
+  .goods-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 620px) {
+  .goods-grid { grid-template-columns: 1fr; }
 }
 
 .goods-empty {
@@ -1504,7 +1519,9 @@ onMounted(async () => {
 }
 
 .pagination {
-  margin-top: 20px;
+  /* 与最后一行商品保持呼吸间距，避免分页栏紧贴内容 */
+  margin-top: 28px;
+  padding-bottom: 8px;
   display: flex;
   justify-content: flex-end;
 }

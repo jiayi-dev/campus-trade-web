@@ -28,6 +28,7 @@
       <!-- 1. 公告墙头部 -->
       <section class="board-hero">
         <span class="board-hero__tape"></span>
+        <span class="board-hero__tape board-hero__tape--b"></span>
         <div class="board-hero__copy">
           <span class="board-hero__eyebrow">WANTED BOARD · 校园求购墙</span>
           <h1 class="board-hero__title">说说你想买什么</h1>
@@ -39,15 +40,27 @@
         </div>
       </section>
 
-      <!-- 2. 服务端未就绪提示（仅列表接口失败时出现，不做假数据兜底） -->
+      <!-- 2. 加载失败提示（仅列表接口失败时出现，不做假数据兜底；401 时引导重新登录） -->
       <div v-if="loadError" class="setup-banner">
         <el-icon class="setup-banner__icon"><WarningFilled /></el-icon>
         <div class="setup-banner__body">
-          <div class="setup-banner__title">求购服务端尚未就绪</div>
+          <div class="setup-banner__title">
+            {{ loadErrorStatus === 401 ? '登录状态已过期，请重新登录' : '求购服务端尚未就绪' }}
+          </div>
           <div class="setup-banner__desc">
-            需要先手动执行 sql/v1.2-wanted.sql 初始化表结构，求购接口才可用。
+            {{ loadErrorStatus === 401
+              ? '当前登录凭证已失效，重新登录后即可继续浏览求购墙。'
+              : '需要先手动执行 sql/v1.2-wanted.sql 初始化表结构，求购接口才可用。' }}
           </div>
         </div>
+        <el-button
+            v-if="loadErrorStatus === 401"
+            type="primary"
+            round
+            size="small"
+            class="setup-banner__action"
+            @click="goLogin"
+        >去登录</el-button>
       </div>
 
       <!-- 3. 筛选区 -->
@@ -176,11 +189,18 @@
       <!-- 6. 请求失败 -->
       <div v-else-if="loadError" class="state-block">
         <el-icon class="state-block__icon"><CircleCloseFilled /></el-icon>
-        <p class="state-block__title">加载失败，请重试</p>
-        <p class="state-block__desc">需求广场暂时无法连接，可能是服务端尚未初始化，也可能是网络波动。</p>
-        <el-button type="primary" round @click="reload">
-          <el-icon><Refresh /></el-icon>重新加载
-        </el-button>
+        <template v-if="loadErrorStatus === 401">
+          <p class="state-block__title">登录状态已过期，请重新登录</p>
+          <p class="state-block__desc">当前登录凭证已失效，重新登录后即可继续浏览求购墙。</p>
+          <el-button type="primary" round @click="goLogin">去登录</el-button>
+        </template>
+        <template v-else>
+          <p class="state-block__title">加载失败，请重试</p>
+          <p class="state-block__desc">需求广场暂时无法连接，可能是服务端尚未初始化，也可能是网络波动。</p>
+          <el-button type="primary" round @click="reload">
+            <el-icon><Refresh /></el-icon>重新加载
+          </el-button>
+        </template>
       </div>
 
       <!-- 7. 空状态 -->
@@ -201,11 +221,12 @@
             class="note"
             :class="{
               'note--closed': Number(w.status) === 2,
-              'note--hot': isHot(w),
-              [`note--tilt-${index % 4}`]: true
+              'note--hot': isHot(w)
             }"
+            :style="{ animationDelay: `${(index % 9) * 40}ms` }"
         >
-          <span class="note__pin"></span>
+          <!-- 装饰胶带，非交互元素 -->
+          <span class="note__tape" aria-hidden="true"></span>
 
           <!-- 热门需求角标：仅基于真实 responseCount -->
           <span v-if="isHot(w)" class="note__hot-flag">
@@ -632,6 +653,8 @@ const activeTotal = ref(null)
 const wantedList = ref([])
 const loading = ref(false)
 const loadError = ref(false)
+// 列表加载失败的 HTTP 状态码（用于 401 时切换文案并引导重新登录）
+const loadErrorStatus = ref(null)
 
 const categories = ref([])
 const campuses = ref([])
@@ -739,6 +762,7 @@ const loadActiveTotal = async () => {
 const loadWanted = async () => {
   loading.value = true
   loadError.value = false
+  loadErrorStatus.value = null
 
   try {
     const result = await request.get('/wanted/page', {
@@ -764,8 +788,9 @@ const loadWanted = async () => {
       await loadActiveTotal()
     }
   } catch (error) {
-    // request.js 已统一提示错误；这里标记自身状态并给出「服务端未就绪」横幅
+    // request.js 已统一提示错误；这里记录状态码并标记自身状态，给出「服务端未就绪 / 登录过期」横幅
     loadError.value = true
+    loadErrorStatus.value = error?.response?.status ?? null
     wantedList.value = []
     total.value = 0
   } finally {
@@ -904,6 +929,11 @@ const goDetail = (wantedId, respond = false) => {
 
 const goBack = () => {
   router.push('/wanted')
+}
+
+// 401 登录过期：跳转登录页
+const goLogin = () => {
+  router.push('/login')
 }
 
 const copyLink = async () => {
@@ -1203,6 +1233,9 @@ onBeforeUnmount(() => {
 
 .wanted-page {
   width: 100%;
+  /* 极淡软木板/便签点状纹理（纯 CSS 渐变，无图片） */
+  background-image: radial-gradient(rgba(217, 164, 65, 0.055) 1px, transparent 1.4px);
+  background-size: 22px 22px;
 }
 
 /* ============================================================
@@ -1215,19 +1248,19 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 30px 34px;
+  padding: 34px 38px;
   margin-bottom: 18px;
   border-radius: var(--brand-radius-xl);
-  border: 1px solid var(--brand-border);
+  border: 1px solid var(--campus-amber-soft);
   overflow: hidden;
   background:
-    radial-gradient(circle at 92% 10%, rgba(201, 168, 92, 0.30), transparent 46%),
-    radial-gradient(circle at 6% 92%, rgba(216, 168, 173, 0.34), transparent 48%),
-    linear-gradient(120deg, var(--brand-bg-soft) 0%, var(--brand-white) 58%, var(--brand-accent-soft) 100%);
+    radial-gradient(circle at 92% 8%, rgba(217, 164, 65, 0.26), transparent 46%),
+    radial-gradient(circle at 6% 94%, rgba(238, 201, 120, 0.30), transparent 50%),
+    linear-gradient(120deg, var(--campus-amber-soft) 0%, var(--brand-white) 56%, #fdf6e4 100%);
   box-shadow: var(--brand-shadow-sm);
 }
 
-/* 顶部胶带装饰 */
+/* 顶部胶带装饰（非交互元素） */
 .board-hero__tape {
   position: absolute;
   top: -14px;
@@ -1235,9 +1268,21 @@ onBeforeUnmount(() => {
   width: 128px;
   height: 30px;
   transform: rotate(-4deg);
-  background: rgba(216, 168, 173, 0.36);
-  border: 1px dashed rgba(184, 152, 90, 0.42);
+  background: rgba(217, 164, 65, 0.38);
+  border: 1px dashed rgba(184, 134, 46, 0.45);
   border-radius: 4px;
+}
+
+/* 第二条胶带：右下角反向点缀 */
+.board-hero__tape--b {
+  top: auto;
+  bottom: -14px;
+  left: auto;
+  right: 64px;
+  width: 96px;
+  height: 24px;
+  transform: rotate(3deg);
+  background: rgba(238, 201, 120, 0.42);
 }
 
 .board-hero__copy {
@@ -1248,22 +1293,26 @@ onBeforeUnmount(() => {
 .board-hero__eyebrow {
   display: inline-block;
   font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--brand-primary-active);
+  letter-spacing: 2.4px;
+  color: var(--campus-amber-deep);
   font-weight: 700;
 }
 
 .board-hero__title {
-  margin: 8px 0 6px;
-  font-size: 30px;
+  margin: 8px 0 8px;
+  font-size: 32px;
+  font-weight: 800;
   line-height: 1.2;
-  color: var(--brand-text);
   letter-spacing: 1px;
+  background: var(--grad-amber-honey);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .board-hero__sub {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--brand-text-regular);
 }
 
@@ -1277,16 +1326,16 @@ onBeforeUnmount(() => {
   min-width: 128px;
   padding: 16px 20px;
   border-radius: var(--brand-radius-lg);
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid var(--brand-border);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--campus-amber-soft);
   box-shadow: var(--brand-shadow-sm);
 }
 
 .board-hero__stat-num {
-  font-size: 34px;
+  font-size: 36px;
   font-weight: 800;
   line-height: 1.1;
-  color: var(--brand-accent-hover);
+  color: var(--campus-amber-deep);
 }
 
 .board-hero__stat-label {
@@ -1328,6 +1377,12 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--brand-text-regular);
+}
+
+.setup-banner__action {
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: auto;
 }
 
 /* ============================================================
@@ -1379,9 +1434,9 @@ onBeforeUnmount(() => {
 }
 
 .seg__item--on {
-  background: var(--brand-white);
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
+  background: var(--campus-amber-soft);
+  border-color: var(--campus-amber);
+  color: var(--campus-amber-deep);
   box-shadow: var(--brand-shadow-sm);
 }
 
@@ -1426,14 +1481,14 @@ onBeforeUnmount(() => {
 }
 
 .chip:hover {
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
+  border-color: var(--campus-amber);
+  color: var(--campus-amber-deep);
 }
 
 .chip--on {
-  background: var(--brand-primary-soft);
-  border-color: var(--brand-primary);
-  color: var(--brand-primary-active);
+  background: var(--campus-amber-soft);
+  border-color: var(--campus-amber);
+  color: var(--campus-amber-deep);
   font-weight: 600;
 }
 
@@ -1469,52 +1524,80 @@ onBeforeUnmount(() => {
  * 需求流：便签瀑布墙
  * ============================================================ */
 
+/* CSS Grid 便签墙：列高自动对齐，不再有瀑布流错位 */
 .wall {
-  column-count: 3;
-  column-gap: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+  align-items: stretch;
 }
 
 .note {
   position: relative;
-  break-inside: avoid;
-  margin: 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   padding: 22px 20px 16px;
   background: var(--brand-white);
   border: 1px solid var(--brand-border);
   border-radius: 4px 18px 18px 18px;
   box-shadow: var(--brand-shadow-sm);
   transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+  animation: note-fade-up 0.45s ease both;
 }
 
-/* 便签轻微错落（确定性倾斜，非随机） */
-.note--tilt-0 { transform: rotate(-0.6deg); }
-.note--tilt-1 { transform: rotate(0.5deg); }
-.note--tilt-2 { transform: rotate(-0.3deg); }
-.note--tilt-3 { transform: rotate(0.8deg); }
+/* 进入视口 fade-up（stagger 延迟由模板 inline animationDelay 按 index%9*40ms 提供） */
+@keyframes note-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 卡片顶部状态色条：进行中青绿 / 热门暖黄 / 已关闭中性灰（closed 优先级最高） */
+.note::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 4px 18px 0 0;
+  background: var(--campus-teal);
+}
+
+.note--hot::before {
+  background: var(--campus-amber);
+}
+
+.note--closed::before {
+  background: #b9b3a8;
+}
 
 .note:hover {
-  transform: rotate(0deg) translateY(-6px);
+  transform: translateY(-3px);
   box-shadow: var(--brand-shadow-lg);
-  border-color: var(--brand-primary);
+  border-color: var(--campus-amber);
   z-index: 2;
 }
 
-/* 图钉 */
-.note__pin {
+/* 和纸胶带装饰（替代原图钉），非交互元素 */
+.note__tape {
   position: absolute;
-  top: -7px;
-  right: 22px;
-  width: 14px;
+  top: -8px;
+  left: 50%;
+  width: 40px;
   height: 14px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 34% 30%, #f2ddba, var(--brand-accent));
-  box-shadow: 0 3px 6px rgba(74, 69, 72, 0.24);
+  transform: translateX(-50%) rotate(-2deg);
+  background: rgba(217, 164, 65, 0.42);
+  border-radius: 2px;
+  clip-path: polygon(3% 8%, 97% 0, 100% 92%, 0 100%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* 热门需求：仅基于真实 responseCount 的强调描边 */
 .note--hot {
-  border-color: var(--brand-accent);
-  box-shadow: 0 0 0 2px var(--brand-accent-soft), var(--brand-shadow-sm);
+  border-color: var(--campus-amber);
+  box-shadow: 0 0 0 2px var(--campus-amber-soft), var(--brand-shadow-sm);
 }
 
 .note__hot-flag {
@@ -1526,7 +1609,7 @@ onBeforeUnmount(() => {
   font-size: 11.5px;
   font-weight: 700;
   color: #fff;
-  background: var(--brand-accent);
+  background: var(--campus-amber);
   border-radius: 999px;
 }
 
@@ -1563,7 +1646,7 @@ onBeforeUnmount(() => {
 }
 
 .note__title:hover {
-  color: var(--brand-primary-active);
+  color: var(--campus-amber-deep);
 }
 
 .note__status {
@@ -1575,8 +1658,8 @@ onBeforeUnmount(() => {
 }
 
 .note__status--open {
-  color: var(--brand-primary-active);
-  background: var(--brand-primary-soft);
+  color: var(--campus-teal-deep);
+  background: var(--campus-teal-soft);
 }
 
 .note__status--closed {
@@ -1652,7 +1735,9 @@ onBeforeUnmount(() => {
 .note__tags {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 6px;
+  min-height: 26px;
   margin-bottom: 10px;
 }
 
@@ -1701,6 +1786,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  margin-top: auto;
   padding-top: 12px;
   border-top: 1px dashed var(--brand-border);
 }
@@ -1729,8 +1815,6 @@ onBeforeUnmount(() => {
  * ============================================================ */
 
 .sk-note {
-  break-inside: avoid;
-  margin-bottom: 18px;
   padding: 20px;
   border-radius: var(--brand-radius-lg);
   background: var(--brand-white);
@@ -1738,7 +1822,7 @@ onBeforeUnmount(() => {
 }
 
 .sk-note--detail {
-  column-span: all;
+  min-height: 220px;
 }
 
 .sk-line {
@@ -1866,13 +1950,16 @@ onBeforeUnmount(() => {
   gap: 24px;
   padding: 28px 30px;
   border-radius: var(--brand-radius-xl) var(--brand-radius-xl) 0 0;
-  background: linear-gradient(120deg, var(--brand-bg-soft) 0%, var(--brand-white) 62%, var(--brand-accent-soft) 100%);
+  background: linear-gradient(120deg, var(--campus-amber-soft) 0%, var(--brand-white) 62%, #fdf6e4 100%);
   border: 1px solid var(--brand-border);
   border-bottom: none;
+  /* 标题区状态色条：进行中青绿 / 已关闭中性灰 */
+  border-top: 4px solid var(--campus-teal);
 }
 
 .archive__head--closed {
   background: linear-gradient(120deg, var(--brand-bg-soft) 0%, var(--brand-bg) 100%);
+  border-top-color: #b9b3a8;
   filter: saturate(0.7);
 }
 
@@ -1991,7 +2078,8 @@ onBeforeUnmount(() => {
   border-radius: var(--brand-radius-lg) 4px var(--brand-radius-lg) var(--brand-radius-lg);
   background: var(--brand-bg);
   border: 1px dashed var(--brand-border);
-  transition: border-color 0.2s ease, background 0.2s ease;
+  box-shadow: var(--brand-shadow-sm);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* 已选定：实线描边 + 奶杏底，视觉上明确胜出 */
@@ -2184,18 +2272,12 @@ onBeforeUnmount(() => {
 }
 
 /* ============================================================
- * 响应式：≥1200 三列 / 768~1200 两列 / <768 单列
+ * 响应式：Grid auto-fill 自适应列数，<768px 强制单列
  * ============================================================ */
-
-@media (max-width: 1200px) {
-  .wall {
-    column-count: 2;
-  }
-}
 
 @media (max-width: 768px) {
   .wall {
-    column-count: 1;
+    grid-template-columns: 1fr;
   }
 
   .board-hero {
@@ -2246,6 +2328,7 @@ onBeforeUnmount(() => {
   .note,
   .note:hover {
     transition: none;
+    animation: none;
     transform: none;
   }
 

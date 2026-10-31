@@ -721,7 +721,7 @@
         申诉后由平台管理员处理，同一订单你在处理完成前只能提交一次。
       </p>
 
-      <el-form label-position="top" class="appeal-form">
+      <el-form item-class-name="appeal-form">
         <el-form-item label="申诉类型">
           <el-select v-model="appealForm.reason" placeholder="请选择申诉类型" style="width: 100%">
             <el-option v-for="r in APPEAL_REASONS" :key="r" :label="r" :value="r" />
@@ -736,6 +736,30 @@
               show-word-limit
               placeholder="描述发生了什么、你希望平台怎么处理（可留空）"
           />
+        </el-form-item>
+        <el-form-item label="证据图片（可空）">
+          <el-upload
+              ref="appealUploadRef"
+              class="appeal-evidence-uploader"
+              list-type="picture-card"
+              action="/api/upload/image"
+              :headers="uploadAuthHeaders"
+              :limit="APPEAL_MAX_EVIDENCES"
+              :file-list="appealPictureFileList"
+              :auto-upload="true"
+              :before-upload="beforeAppealEvidenceUpload"
+              :on-success="handleAppealEvidenceSuccess"
+              :on-error="handleAppealEvidenceError"
+              :on-remove="handleAppealEvidenceRemove"
+            >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+          <div class="appeal-evidence-hint">
+            最多 {{ APPEAL_MAX_EVIDENCES }} 张，单张 ≤ {{ APPEAL_MAX_SIZE_MB }}MB
+            <template v-if="appealForm.evidences.length > 0">
+              ，已上传 {{ appealForm.evidences.length }}/{{ APPEAL_MAX_EVIDENCES }}
+            </template>
+          </div>
         </el-form-item>
       </el-form>
 
@@ -763,6 +787,18 @@
           </div>
           <div class="appeal-item__reason">{{ a.reason }}</div>
           <p v-if="a.detail" class="appeal-item__detail">{{ a.detail }}</p>
+          <div v-if="appealEvidenceList(a).length" class="appeal-item__evidences">
+            <el-image
+                v-for="(url, i) in appealEvidenceList(a)"
+                :key="url + i"
+                :src="url"
+                :preview-src-list="appealEvidenceList(a)"
+                :initial-index="i"
+                fit="cover"
+                class="appeal-item__evidence"
+                preview-teleported
+            />
+          </div>
           <div class="appeal-item__meta">
             <span>{{ formatDateTime(a.createTime) }} 提交</span>
             <span v-if="a.handleComment">处理意见：{{ a.handleComment }}</span>
@@ -778,14 +814,15 @@
 <script setup>
 import { ref, computed, watch, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElUpload } from 'element-plus'
 import {
   Search, Refresh, Tickets, ShoppingBag, Shop, Clock, Van, Lock, Check,
   CircleCheck, CircleCheckFilled, CircleCloseFilled, Picture, View,
-  Location, School, User, StarFilled, ArrowLeft, Box, Warning
+  Location, School, User, StarFilled, ArrowLeft, Box, Warning, Plus
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime, formatRelativeTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 
 const route = useRoute()
 const router = useRouter()
@@ -1228,12 +1265,8 @@ const counterpartyName = (order) => {
 // 图片处理
 // =========================
 
-const resolveImageUrl = (url) => {
-  if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
-  // 后端返回的 URL 已含 /api 前缀，不再二次拼接
-  return url
-}
+// 图片处理：与商品列表 / 详情共用同一套规则
+const resolveImageUrl = (url) => resolveGoodsImage(url)
 
 const onImageError = (order) => {
   order.imageUrl = ''
@@ -1445,7 +1478,7 @@ const APPEAL_REASONS = [
 const appealDialogVisible = ref(false)
 const appealTarget = ref(null)
 const appealSubmitting = ref(false)
-const appealForm = reactive({ reason: '', detail: '' })
+const appealForm = reactive({ reason: '', detail: '', evidences: [] })
 
 const myAppealsVisible = ref(false)
 const myAppeals = ref([])
@@ -1458,10 +1491,24 @@ const appealStatusText = (status) => {
   return '待处理'
 }
 
+// 后端 evidences 以 JSON 字符串存库（如 '["/api/files/a.jpg"]'），
+// 兼容数组格式，解析失败按「无证据」处理，避免申诉列表整体报错。
+const appealEvidenceList = (appeal) => {
+  const raw = appeal?.evidences
+  if (!raw) return []
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(arr) ? arr.filter(u => typeof u === 'string' && u) : []
+  } catch (e) {
+    return []
+  }
+}
+
 const openAppeal = (order) => {
   appealTarget.value = order
   appealForm.reason = ''
   appealForm.detail = ''
+  appealForm.evidences = []
   appealDialogVisible.value = true
 }
 
@@ -1477,7 +1524,8 @@ const submitAppeal = async () => {
     const result = await request.post('/appeals', {
       orderId: Number(appealTarget.value.orderId),
       reason: appealForm.reason,
-      detail: appealForm.detail.trim()
+      detail: appealForm.detail.trim(),
+      evidences: appealForm.evidences
     })
 
     if (typeof result === 'string' && result.startsWith('申诉已提交')) {
@@ -1492,6 +1540,71 @@ const submitAppeal = async () => {
     appealSubmitting.value = false
   }
 }
+
+// =========================
+// 申诉证据图片上传
+// =========================
+const APPEAL_MAX_EVIDENCES = 5
+const APPEAL_MAX_SIZE_MB = 5
+
+const appealUploadRef = ref(null)
+
+// el-upload 的 headers 必须是「对象」，传函数会被 Object.entries 忽略，
+// 导致上传请求不带 Authorization → 后端 AuthInterceptor 返回 401。
+// 这里用 computed 生成真实对象，且与 request.js 使用同一个 token key。
+const uploadAuthHeaders = computed(() => {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+})
+
+const handleAppealEvidenceSuccess = (res) => {
+  if (res && res.url) {
+    if (appealForm.evidences.length >= APPEAL_MAX_EVIDENCES) {
+      ElMessage.warning(`证据最多 ${APPEAL_MAX_EVIDENCES} 张`)
+      return
+    }
+    appealForm.evidences.push(res.url)
+  } else {
+    ElMessage.error(res?.error || '上传失败')
+  }
+}
+
+const handleAppealEvidenceError = (err) => {
+  ElMessage.error(err?.message || '图片上传失败')
+}
+
+const handleAppealEvidenceRemove = (file) => {
+  // file.response.url 是上传后返回的真实 URL
+  const url = file?.response?.url
+  if (!url) return
+  const idx = appealForm.evidences.indexOf(url)
+  if (idx >= 0) appealForm.evidences.splice(idx, 1)
+}
+
+const beforeAppealEvidenceUpload = (file) => {
+  const isImage = file.type?.startsWith('image/')
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件')
+    return false
+  }
+  if (file.size > APPEAL_MAX_SIZE_MB * 1024 * 1024) {
+    ElMessage.error(`单张图片不超过 ${APPEAL_MAX_SIZE_MB}MB`)
+    return false
+  }
+  if (appealForm.evidences.length >= APPEAL_MAX_EVIDENCES) {
+    ElMessage.warning(`证据最多 ${APPEAL_MAX_EVIDENCES} 张`)
+    return false
+  }
+  return true
+}
+
+const appealPictureFileList = computed(() =>
+  appealForm.evidences.map(url => ({
+    name: url.split('/').pop() || 'evidence.jpg',
+    url,
+    response: { url }
+  }))
+)
 
 const openMyAppeals = async () => {
   myAppealsVisible.value = true
@@ -2832,6 +2945,23 @@ watch(
   color: var(--brand-text-regular);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.appeal-item__evidences {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.appeal-item__evidence {
+  width: 68px;
+  height: 68px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--brand-border);
+  cursor: zoom-in;
+  background: var(--brand-bg-soft);
 }
 
 .appeal-item__meta {

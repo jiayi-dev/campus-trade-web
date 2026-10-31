@@ -508,6 +508,7 @@ import {
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatDateTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 
 const route = useRoute()
 const router = useRouter()
@@ -775,12 +776,8 @@ const counterpartyName = (order) => {
 // 图片处理
 // =========================
 
-const resolveImageUrl = (url) => {
-  if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
-  // 后端返回的 URL 已含 /api 前缀（如 /api/files/goods/xxx.png），不再二次拼接
-  return url
-}
+// 图片处理：与商品列表 / 详情共用同一套规则（过滤不可达地址、空值返回 ''）
+const resolveImageUrl = (url) => resolveGoodsImage(url)
 
 const onImageError = (order) => {
   order.imageUrl = ''

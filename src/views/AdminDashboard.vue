@@ -272,7 +272,13 @@
         </el-tab-pane>
 
         <!-- ===================== 卖家申请 ===================== -->
-        <el-tab-pane label="卖家申请" name="applications">
+        <el-tab-pane name="applications">
+          <template #label>
+            卖家申请
+            <span v-if="pendingApplyCount > 0" class="tab-badge">
+              {{ pendingApplyCount > 99 ? '99+' : pendingApplyCount }}
+            </span>
+          </template>
 
           <div class="filter-bar">
             <el-select
@@ -564,6 +570,7 @@ const toggleUserStatus = async (user, status) => {
     if (result === '用户已启用' || result === '用户已禁用') {
       ElMessage.success(result)
       user.status = status
+      loadRecords()
     } else {
       ElMessage.error(result || '操作失败')
     }
@@ -630,6 +637,7 @@ const offSaleGoods = async (goods) => {
     if (result === '商品已下架') {
       ElMessage.success(result)
       goods.status = 0
+      loadRecords()
     } else {
       ElMessage.error(result || '操作失败')
     }
@@ -660,6 +668,9 @@ const deleteGoods = async (goods) => {
     if (result === '商品删除成功') {
       ElMessage.success(result)
       goodsList.value = goodsList.value.filter(g => g.goodsId !== goods.goodsId)
+      // 灰标同步：本地删除后总数减一，避免刷新前 Tab 数字与列表不一致
+      goodsTotal.value = Math.max(0, goodsTotal.value - 1)
+      loadRecords()
     } else {
       ElMessage.error(result || '商品删除失败')
     }
@@ -725,6 +736,21 @@ const loadingApplications = ref(false)
 const applicationActionLoading = ref(null)
 const applicationFilter = ref({ status: null })
 const applicationPage = ref({ pageNum: 1, pageSize: 8 })
+
+// 待审核申请数：独立于列表筛选（applicationFilter），专供 Tab 红点使用
+const pendingApplyCount = ref(0)
+const loadPendingApplyCount = async () => {
+  try {
+    const res = await request.get('/admin/seller-applications', {
+      params: { status: 0, pageNum: 1, pageSize: 1 }
+    })
+    pendingApplyCount.value = Number(res?.total) || 0
+    // 通知 Layout 侧边栏红点同步刷新（审完申请后左侧红点立即消失）
+    window.dispatchEvent(new CustomEvent('seller-application-changed'))
+  } catch (error) {
+    // 失败静默，不影响主流程
+  }
+}
 
 // 详情对话框
 const detailDialogVisible = ref(false)
@@ -820,7 +846,7 @@ const approveApplication = async (row) => {
     if (result === '申请已通过，用户已成为卖家') {
       ElMessage.success(result)
       detailDialogVisible.value = false
-      await Promise.allSettled([loadApplications(), loadRecords()])
+      await Promise.allSettled([loadApplications(), loadRecords(), loadPendingApplyCount()])
     } else {
       ElMessage.error(result || '操作失败')
     }
@@ -861,7 +887,7 @@ const submitReject = async () => {
     if (result === '申请已拒绝') {
       ElMessage.success(result)
       rejectDialogVisible.value = false
-      await Promise.allSettled([loadApplications(), loadRecords()])
+      await Promise.allSettled([loadApplications(), loadRecords(), loadPendingApplyCount()])
     } else {
       ElMessage.error(result || '操作失败')
     }
@@ -912,6 +938,7 @@ onMounted(() => {
   loadRecords()
   loadUsers()
   loadApplications()
+  loadPendingApplyCount()
 })
 </script>
 
@@ -952,6 +979,25 @@ onMounted(() => {
 
 .admin-tabs :deep(.el-tabs__header) {
   margin-bottom: 20px;
+}
+
+/* Tab 红点：与侧边栏 nav-badge 同款胶囊样式，仅用于「卖家申请」待审核数
+   ——红点语义 = 管理员可处理的待办（处理后消失）；
+   用户/商品/订单/操作记录没有管理员可执行的待办动作，不挂标记避免误导 */
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: 2px;
 }
 
 .filter-bar {

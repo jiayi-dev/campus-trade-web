@@ -95,23 +95,41 @@
                 </div>
                 <div v-if="s.goodsName" class="mc-session__goods">{{ s.goodsName }}</div>
               </div>
+
+              <!-- 移除会话：悬浮显示（mc-session 是 button，内部用 span 承载点击） -->
+              <span
+                  class="mc-session__remove"
+                  role="button"
+                  aria-label="移除会话"
+                  title="移除会话"
+                  @click.stop="confirmRemove(s)"
+              >
+                <el-icon><Delete /></el-icon>
+              </span>
             </button>
 
             <!-- 空状态 -->
             <div v-if="filteredSessions.length === 0" class="mc-empty">
               <el-icon class="mc-empty__icon"><ChatLineRound /></el-icon>
               <p class="mc-empty__title">
-                {{ keyword ? '没有匹配的会话' : (dbNotReady ? '消息模块尚未启用' : '还没有会话') }}
+                {{ keyword
+                  ? '没有匹配的会话'
+                  : (emptyAllRemoved
+                      ? '会话已全部移除'
+                      : (dbNotReady ? '消息模块尚未启用' : '还没有会话'))
+                }}
               </p>
               <p class="mc-empty__desc">
                 {{ keyword
                   ? '换个关键词试试'
-                  : (dbNotReady
-                    ? '请先执行 sql/v1.2-chat.sql 建表'
-                    : '点击上方「发起会话」，从你的交易联系人开始沟通') }}
+                  : (emptyAllRemoved
+                      ? '移除仅在本设备生效，不会删除聊天记录；对方发来新消息时会重新显示'
+                      : (dbNotReady
+                        ? '请先执行 sql/v1.2-chat.sql 建表'
+                        : '点击上方「发起会话」，从你的交易联系人开始沟通')) }}
               </p>
               <el-button
-                  v-if="!keyword && !dbNotReady"
+                  v-if="!keyword && !dbNotReady && !emptyAllRemoved"
                   type="primary"
                   plain
                   round
@@ -393,13 +411,14 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Search, CirclePlus, ChatDotRound, ChatLineRound,
-  Picture, Promotion, Loading, WarningFilled, Tickets
+  Picture, Promotion, Loading, WarningFilled, Tickets, Delete
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatRelativeTime, formatPrice } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 
 const router = useRouter()
 
@@ -434,16 +453,95 @@ const orderPickerLoading = ref(false)
 const pickerOrders = ref([])
 
 // =========================
+// 移除会话（本设备隐藏）
+// 说明：后端 chat_message 无会话表、无按用户隐藏字段，且约束不允许改表，
+// 所以"移除会话"采用微信同款语义：仅在本设备隐藏会话行（localStorage），
+// 不伪造服务端删除成功，不删除任何聊天记录。
+// 恢复规则（与确认弹窗文案一致，避免"移除后永远不显示"的纰漏）：
+//   1. 隐藏时记录该会话当时的 lastTime 快照；此后 lastTime 变化（对方/我方新消息）→ 自动恢复显示
+//   2. 用户再次主动发起与该人的聊天（联系人/商品详情入口）→ 立即恢复显示
+// =========================
+const HIDDEN_SESSIONS_KEY = 'campus_chat_hidden_sessions'
+// 结构：{ [sessionKey]: 移除时的 lastTime 快照字符串 }
+const hiddenSessionKeys = ref({})
+const removing = ref(false)
+
+const loadHiddenSessions = () => {
+  try {
+    const raw = localStorage.getItem(HIDDEN_SESSIONS_KEY)
+    const data = raw ? JSON.parse(raw) : {}
+    if (Array.isArray(data)) {
+      // 兼容旧格式（纯 key 数组）：快照置 null，待首次加载会话列表时补齐
+      const map = {}
+      data.forEach(k => { if (k) map[k] = null })
+      hiddenSessionKeys.value = map
+    } else if (data && typeof data === 'object') {
+      hiddenSessionKeys.value = data
+    } else {
+      hiddenSessionKeys.value = {}
+    }
+  } catch (e) {
+    hiddenSessionKeys.value = {}
+  }
+}
+
+const persistHiddenSessions = () => {
+  try {
+    localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify(hiddenSessionKeys.value))
+  } catch (e) {
+    // localStorage 不可用时移除仅在本次会话内生效
+  }
+}
+
+// 与后端 ChatService.sessionKeyOf 一致：min-max-gid，goodsId 空用 0
+const sessionKeyOf = (otherUserId, goodsId) => {
+  const a = currentUserId
+  const b = Number(otherUserId)
+  const gid = goodsId == null ? 0 : Number(goodsId)
+  return `${Math.min(a, b)}-${Math.max(a, b)}-${gid}`
+}
+
+// 恢复某个被移除的会话（主动再聊 / 有新消息时调用）
+const unhideSession = (key) => {
+  if (!key || !(key in hiddenSessionKeys.value)) return
+  const next = { ...hiddenSessionKeys.value }
+  delete next[key]
+  hiddenSessionKeys.value = next
+  persistHiddenSessions()
+}
+
+// 每次会话列表刷新后校对：lastTime 与移除时快照不同 → 说明有新动态 → 恢复显示
+const reconcileHiddenSessions = () => {
+  const map = hiddenSessionKeys.value
+  const keys = Object.keys(map)
+  if (!keys.length) return
+  let changed = false
+  const next = { ...map }
+  for (const s of sessions.value) {
+    if (!s.sessionKey || !(s.sessionKey in next)) continue
+    const current = String(s.lastTime || '')
+    if (next[s.sessionKey] == null) {
+      // 旧格式迁移：补齐快照，本次不恢复
+      next[s.sessionKey] = current
+      changed = true
+    } else if (next[s.sessionKey] !== current) {
+      // 有新消息：自动恢复显示
+      delete next[s.sessionKey]
+      changed = true
+    }
+  }
+  if (changed) {
+    hiddenSessionKeys.value = next
+    persistHiddenSessions()
+  }
+}
+
+// =========================
 // 工具
 // =========================
 const pad = n => String(n).padStart(2, '0')
 
-const resolveImageUrl = (url) => {
-  if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
-  // 后端返回的 URL 已含 /api 前缀（如 /api/files/goods/xxx.png），不再二次拼接
-  return url
-}
+const resolveImageUrl = (url) => resolveGoodsImage(url)
 
 const onThumbError = (s) => {
   s.imageUrl = ''
@@ -474,14 +572,22 @@ const dayLabel = (time) => {
 // 计算属性
 // =========================
 const filteredSessions = computed(() => {
+  // 先剔除本设备已移除的会话，再按关键词过滤
+  const visible = sessions.value.filter(s => !(s.sessionKey in hiddenSessionKeys.value))
   const kw = keyword.value.trim().toLowerCase()
-  if (!kw) return sessions.value
-  return sessions.value.filter(s =>
+  if (!kw) return visible
+  return visible.filter(s =>
       String(s.otherUserName || '').toLowerCase().includes(kw) ||
       String(s.goodsName || '').toLowerCase().includes(kw) ||
       String(s.lastContent || '').toLowerCase().includes(kw)
   )
 })
+
+// 会话全部被移除（非搜索、非数据库问题）：空态给专门提示
+const emptyAllRemoved = computed(() =>
+    !keyword.value && !dbNotReady.value
+    && sessions.value.length > 0 && filteredSessions.value.length === 0
+)
 
 // 会话列表最后一条消息的预览文案（图片/订单不展示原始 URL）
 const sessionPreview = (s) => {
@@ -524,6 +630,8 @@ const loadSessions = async () => {
     const result = await request.get('/chat/sessions')
     sessions.value = Array.isArray(result) ? result : []
     dbNotReady.value = false
+    // 校对已移除会话：有新动态的自动恢复显示
+    reconcileHiddenSessions()
   } catch (error) {
     sessions.value = []
     // 500：通常是 chat_message 表尚未创建（需手动执行 sql/v1.2-chat.sql）
@@ -539,6 +647,8 @@ const refreshUnread = async () => {
   try {
     const result = await request.get('/chat/unread')
     unreadTotal.value = result && typeof result.total === 'number' ? result.total : 0
+    // 通知 Layout 侧边栏红点同步刷新（读完会话后左侧红点立即消失）
+    window.dispatchEvent(new CustomEvent('chat-unread-changed'))
   } catch (error) {
     // 未读统计失败不阻断页面（request.js 已提示），保持原值
   }
@@ -587,6 +697,8 @@ const reloadAll = async () => {
 // 打开会话
 // =========================
 const openSession = async (s) => {
+  // 若该会话此前被移除（理论上列表已不显示，兜底），打开即恢复
+  unhideSession(s.sessionKey)
   active.value = {
     otherUserId: Number(s.otherUserId),
     otherUserName: s.otherUserName || '用户',
@@ -609,6 +721,8 @@ const openContacts = () => {
 // 从联系人候选打开一个尚无历史的会话，允许直接发送第一条消息
 const openContact = async (c) => {
   contactVisible.value = false
+  // 再次主动发起聊天：若该会话此前被移除，立即恢复到列表显示
+  unhideSession(sessionKeyOf(c.otherUserId, c.goodsId))
   active.value = {
     otherUserId: Number(c.otherUserId),
     otherUserName: c.otherUserName || '用户',
@@ -618,6 +732,56 @@ const openContact = async (c) => {
     imageUrl: c.imageUrl
   }
   await loadHistory()
+}
+
+// =========================
+// 移除会话：确认 → 本地隐藏 → 处理当前打开的会话
+// =========================
+const isSameSession = (a, s) => !!a &&
+    Number(a.otherUserId) === Number(s.otherUserId) &&
+    (a.goodsId == null ? null : Number(a.goodsId)) ===
+    (s.goodsId == null ? null : Number(s.goodsId))
+
+const confirmRemove = async (s) => {
+  if (!s || !s.sessionKey || removing.value) return
+  if (s.sessionKey in hiddenSessionKeys.value) return
+
+  try {
+    await ElMessageBox.confirm(
+        `将把与「${s.otherUserName || '对方'}」的会话从你的消息列表移除。`
+        + '仅在本设备隐藏，不会删除双方的聊天记录；对方发来新消息时会重新显示。',
+        '移除会话',
+        {
+          confirmButtonText: '移除会话',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+    )
+  } catch (action) {
+    return // 用户取消
+  }
+
+  removing.value = true
+
+  try {
+    // 记录移除时的 lastTime 快照：之后该会话有新消息时据此自动恢复显示
+    const next = { ...hiddenSessionKeys.value }
+    next[s.sessionKey] = String(s.lastTime || '')
+    hiddenSessionKeys.value = next
+    persistHiddenSessions()
+
+    // 移除的是当前打开的会话：回到引导空态，避免聊天区悬挂失效会话
+    if (isSameSession(active.value, s)) {
+      active.value = null
+      messages.value = []
+    }
+
+    ElMessage.success('已移除会话')
+  } catch (e) {
+    ElMessage.error('移除会话失败，请重试')
+  } finally {
+    removing.value = false
+  }
 }
 
 // =========================
@@ -777,6 +941,7 @@ const goSeller = () => {
 }
 
 onMounted(() => {
+  loadHiddenSessions()
   reloadAll()
 })
 </script>
@@ -891,11 +1056,12 @@ onMounted(() => {
 /* --- 会话条目 --- */
 
 .mc-session {
+  position: relative;
   width: 100%;
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 10px;
+  padding: 10px 28px 10px 10px;
   border: none;
   background: transparent;
   border-radius: var(--brand-radius);
@@ -903,6 +1069,39 @@ onMounted(() => {
   text-align: left;
   transition: background 0.2s ease, transform 0.2s ease;
   font-family: inherit;
+}
+
+/* 移除会话入口：默认隐藏，悬浮会话行时浮现，避免界面常驻杂乱 */
+.mc-session__remove {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.mc-session:hover .mc-session__remove {
+  opacity: 0.75;
+}
+
+.mc-session__remove:hover {
+  opacity: 1;
+  background: #fbe3e5;
+  color: #c0565f;
+}
+
+/* 触屏设备无悬浮：常驻半透明，保证入口可发现 */
+@media (hover: none) {
+  .mc-session__remove { opacity: 0.45; }
 }
 
 .mc-session:hover {

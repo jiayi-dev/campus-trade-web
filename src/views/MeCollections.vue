@@ -155,8 +155,8 @@
               <!-- 图片为视觉重点 -->
               <div class="fav-card__media" :class="`media--${coverTheme(item)}`">
                 <img
-                    v-if="item.imageUrl && !imgErrorMap[item.goodsId]"
-                    :src="item.imageUrl"
+                    v-if="resolveGoodsImage(item.imageUrl) && !imgErrorMap[item.goodsId]"
+                    :src="resolveGoodsImage(item.imageUrl)"
                     :alt="item.goodsName"
                     class="fav-card__img"
                     @error="handleImgError(item.goodsId)"
@@ -333,8 +333,8 @@
                 >
                   <div class="fp-item__thumb" :class="`media--${coverTheme(item)}`">
                     <img
-                        v-if="item.imageUrl && !imgErrorMap['fp-' + item.goodsId]"
-                        :src="item.imageUrl"
+                        v-if="resolveGoodsImage(item.imageUrl) && !imgErrorMap['fp-' + item.goodsId]"
+                        :src="resolveGoodsImage(item.imageUrl)"
                         :alt="item.goodsName"
                         @error="handleImgError('fp-' + item.goodsId)"
                     />
@@ -395,6 +395,7 @@ import {
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatRelativeTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 import {
   readFootprints,
   removeFootprint,
@@ -623,12 +624,16 @@ const visibleFootprints = computed(() => {
   }
 
   const sorted = [...list]
+
+  // 价格相同（或价格缺失）时，统一用浏览时间倒序做次级排序，避免顺序抖动
+  const byViewTimeDesc = (a, b) => (b.viewTime ?? 0) - (a.viewTime ?? 0)
+
   if (fpSortBy.value === 'priceAsc') {
-    sorted.sort((a, b) => Number(a.price) - Number(b.price))
+    sorted.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) || byViewTimeDesc(a, b))
   } else if (fpSortBy.value === 'priceDesc') {
-    sorted.sort((a, b) => Number(b.price) - Number(a.price))
+    sorted.sort((a, b) => (Number(b.price || 0) - Number(a.price || 0)) || byViewTimeDesc(a, b))
   } else {
-    sorted.sort((a, b) => (b.viewTime ?? 0) - (a.viewTime ?? 0))
+    sorted.sort(byViewTimeDesc)
   }
   return sorted
 })
@@ -639,13 +644,27 @@ const dayKey = (ts) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-// 分组规则：今天 / 昨天 / 更早按 YYYY-MM-DD 分组；组内按浏览时间倒序
+// 分组规则：
+//   · 最近浏览 → 今天 / 昨天 / 更早按 YYYY-MM-DD 分组（组内保持已排好的时间倒序）
+//   · 价格排序 → 不再按天分组，直接单一分组平铺，保证价格顺序不被分组/二次排序覆盖
 const visibleGroups = computed(() => {
+  const list = visibleFootprints.value
+
+  if (!list.length) return []
+
+  if (fpSortBy.value !== 'recent') {
+    return [{
+      key: fpSortBy.value,
+      label: fpSortBy.value === 'priceAsc' ? '价格从低到高' : '价格从高到低',
+      items: list
+    }]
+  }
+
   const todayKey = dayKey(Date.now())
   const yesterdayKey = dayKey(Date.now() - 24 * 60 * 60 * 1000)
 
   const map = new Map()
-  visibleFootprints.value.forEach(item => {
+  list.forEach(item => {
     const key = dayKey(item.viewTime || 0)
     if (!map.has(key)) map.set(key, [])
     map.get(key).push(item)
@@ -654,7 +673,6 @@ const visibleGroups = computed(() => {
   return Array.from(map.entries())
       .sort((a, b) => (a[0] < b[0] ? 1 : -1))
       .map(([key, items]) => {
-        items.sort((a, b) => (b.viewTime ?? 0) - (a.viewTime ?? 0))
         const label = key === todayKey ? '今天'
             : key === yesterdayKey ? '昨天'
                 : key

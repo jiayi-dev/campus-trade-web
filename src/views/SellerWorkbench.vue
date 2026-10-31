@@ -188,8 +188,8 @@
               >
                 <div class="task__thumb">
                   <img
-                      v-if="order.imageUrl"
-                      :src="order.imageUrl"
+                      v-if="resolveGoodsImage(order.imageUrl)"
+                      :src="resolveGoodsImage(order.imageUrl)"
                       :alt="order.goodsName"
                       @error="onImgError($event)"
                   />
@@ -295,8 +295,8 @@
 
             <div class="perf__thumb">
               <img
-                  v-if="goods.imageUrl"
-                  :src="goods.imageUrl"
+                  v-if="resolveGoodsImage(goods.imageUrl)"
+                  :src="resolveGoodsImage(goods.imageUrl)"
                   :alt="goods.goodsName"
                   @error="onImgError($event)"
               />
@@ -419,6 +419,7 @@ import {
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatPrice, formatRelativeTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
 
 const router = useRouter()
 

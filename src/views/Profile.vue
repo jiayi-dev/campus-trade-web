@@ -12,9 +12,23 @@
       <div class="id-card__shine"></div>
 
       <div class="id-card__main">
-        <div class="id-card__avatar-wrap">
+        <div
+            class="id-card__avatar-wrap"
+            role="button"
+            tabindex="0"
+            title="点击放大头像"
+            @click="openAvatarPreview"
+            @keydown.enter.prevent="openAvatarPreview"
+        >
           <div class="id-card__avatar-ring"></div>
-          <div class="id-card__avatar">{{ avatarLetter }}</div>
+          <img
+              v-if="avatarState.url"
+              :src="avatarState.url"
+              class="id-card__avatar id-card__avatar--img"
+              alt="我的头像"
+              @error="avatarState.url = ''"
+          >
+          <div v-else class="id-card__avatar">{{ avatarLetter }}</div>
           <div class="id-card__avatar-badge">
             <el-icon><Medal /></el-icon>
           </div>
@@ -370,19 +384,54 @@
       </template>
     </el-dialog>
 
+    <!-- ===== 头像放大预览层：淡入浮现 + 柔光环，支持遮罩 / 按钮 / Esc 关闭 ===== -->
+    <teleport to="body">
+      <transition name="av-fade">
+        <div
+            v-if="avatarPreviewVisible"
+            class="avatar-lightbox"
+            @click.self="closeAvatarPreview"
+        >
+          <!-- 低强度环绕光环：缓慢旋转的柔光锥 + 呼吸光圈 -->
+          <div class="avatar-lightbox__aura" aria-hidden="true"></div>
+          <div class="avatar-lightbox__aura avatar-lightbox__aura--inner" aria-hidden="true"></div>
+
+          <div class="avatar-lightbox__frame">
+            <img
+                v-if="avatarState.url"
+                :src="avatarState.url"
+                class="avatar-lightbox__img"
+                alt="头像大图"
+                @error="closeAvatarPreview"
+            />
+            <!-- 无头像 / 地址失效：与全站一致的首字母兜底 -->
+            <div v-else class="avatar-lightbox__letter">{{ avatarLetter }}</div>
+          </div>
+
+          <div class="avatar-lightbox__name">
+            {{ profile.username || '同学' }} · 头像预览
+          </div>
+
+          <button type="button" class="avatar-lightbox__close" aria-label="关闭预览" @click="closeAvatarPreview">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+      </transition>
+    </teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   UserFilled, Medal, Trophy, Postcard, Clock, CircleCheckFilled, ArrowRight,
   Goods, Star, Tickets, ShoppingBag, CirclePlus, Shop, MagicStick, Promotion,
-  Loading, WarningFilled, Lock, Iphone, Message
+  Loading, WarningFilled, Lock, Iphone, Message, Close
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
+import { avatarState, loadCurrentAvatar, setAvatarUrl } from '../utils/avatar'
 import { formatDateTime } from '../utils/format'
 
 const router = useRouter()
@@ -402,6 +451,40 @@ const appStatus = computed(() => {
 const roleLabelMap = { admin: '管理员', seller: '认证卖家', student: '在校学生' }
 const roleLabel = computed(() => roleLabelMap[profile.value.role] || '用户')
 const avatarLetter = computed(() => (profile.value.username || '同').charAt(0).toUpperCase())
+
+// ================= 头像放大预览（轻量灯箱，无新依赖） =================
+
+const avatarPreviewVisible = ref(false)
+
+const openAvatarPreview = () => {
+  avatarPreviewVisible.value = true
+}
+
+const closeAvatarPreview = () => {
+  avatarPreviewVisible.value = false
+}
+
+// Esc 关闭：仅预览打开期间监听，避免影响全局快捷键
+const onAvatarPreviewKeydown = (e) => {
+  if (e.key === 'Escape') closeAvatarPreview()
+}
+
+watch(avatarPreviewVisible, (open) => {
+  if (open) {
+    window.addEventListener('keydown', onAvatarPreviewKeydown)
+    // 预览期间锁定背景滚动（Layout 内容区为滚动容器）
+    document.body.style.overflow = 'hidden'
+  } else {
+    window.removeEventListener('keydown', onAvatarPreviewKeydown)
+    document.body.style.overflow = ''
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onAvatarPreviewKeydown)
+  document.body.style.overflow = ''
+})
+
 const campusNo = computed(() => String(profile.value.userId || 0).padStart(5, '0'))
 
 const identitySlogan = computed(() => {
@@ -674,6 +757,15 @@ onMounted(async () => {
 
     if (pr.status === 'fulfilled') {
       profile.value = pr.value || {}
+
+      // 头像：优先使用资料接口返回值；缺失时再向 /user/avatar 读取，
+      // 保证与侧边栏共用同一份全局头像状态（任一处更新，另一处即时同步）
+      if (profile.value.avatar) {
+        setAvatarUrl(profile.value.avatar)
+      } else {
+        loadCurrentAvatar()
+      }
+
       // 角色以服务端实时值为准（卖家审核通过后刷新即可见）
       const serverRole = profile.value.role
       if (serverRole && serverRole !== localStorage.getItem('role')) {
@@ -775,7 +867,45 @@ onMounted(async () => {
 
 .id-card__main { display: flex; align-items: center; gap: 22px; z-index: 1; }
 
-.id-card__avatar-wrap { position: relative; width: 86px; height: 86px; flex-shrink: 0; }
+.id-card__avatar-wrap {
+  position: relative;
+  width: 86px;
+  height: 86px;
+  flex-shrink: 0;
+  /* V1.3.2：可点击放大——悬浮轻放大 + 柔光环反馈 */
+  cursor: pointer;
+  transition: transform 0.28s ease;
+}
+
+.id-card__avatar-wrap:hover {
+  transform: scale(1.04);
+}
+
+.id-card__avatar-wrap:hover .id-card__avatar-ring {
+  opacity: 0.95;
+}
+
+/* 悬浮时的柔和光圈（低强度，不干扰卡面） */
+.id-card__avatar-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -13px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.30), transparent 66%);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+  pointer-events: none;
+}
+
+.id-card__avatar-wrap:hover::after {
+  opacity: 1;
+}
+
+.id-card__avatar-wrap:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 4px;
+  border-radius: 50%;
+}
 
 .id-card__avatar {
   position: relative;
@@ -786,6 +916,12 @@ onMounted(async () => {
   display: flex; align-items: center; justify-content: center;
   font-size: 34px; font-weight: 700;
   backdrop-filter: blur(4px);
+}
+
+.id-card__avatar--img {
+  object-fit: cover;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .id-card__avatar-ring {
@@ -1343,6 +1479,170 @@ onMounted(async () => {
 @media (max-width: 480px) {
   .growth-grid { grid-template-columns: 1fr; }
   .app-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ========== 头像放大预览灯箱（teleport 到 body，浅粉奶黄暖调） ========== */
+
+.avatar-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  /* 暖调遮罩 + 轻微模糊，与全站粉黄体系一致 */
+  background: rgba(85, 71, 74, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+/* 柔光环：低强度呼吸 + 极慢旋转，不闪烁不喧宾夺主 */
+.avatar-lightbox__aura {
+  position: absolute;
+  width: 460px;
+  height: 460px;
+  border-radius: 50%;
+  background: conic-gradient(
+      from 0deg,
+      rgba(248, 216, 221, 0.35),
+      rgba(243, 224, 184, 0.30),
+      rgba(252, 230, 232, 0.35),
+      rgba(248, 216, 221, 0.35)
+  );
+  filter: blur(38px);
+  opacity: 0.75;
+  animation: av-aura-spin 16s linear infinite;
+  pointer-events: none;
+}
+
+.avatar-lightbox__aura--inner {
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(
+      circle,
+      rgba(255, 240, 235, 0.45),
+      transparent 68%
+  );
+  filter: blur(22px);
+  animation: av-aura-breathe 4.6s ease-in-out infinite;
+}
+
+@keyframes av-aura-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes av-aura-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.05); }
+}
+
+.avatar-lightbox__frame {
+  position: relative;
+  width: min(320px, 62vw);
+  height: min(320px, 62vw);
+  border-radius: 50%;
+  overflow: hidden;
+  border: 5px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 24px 70px rgba(85, 71, 74, 0.45),
+    0 0 0 10px rgba(252, 230, 232, 0.28);
+  /* 浮现动画由 transition 承担：淡入 + 轻微缩放上浮 */
+  animation: av-frame-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes av-frame-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.avatar-lightbox__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 无头像：与首字母头像同一套粉黄渐变 */
+.avatar-lightbox__letter {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 110px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(145deg, #e8b4b8 0%, #ecc99c 100%);
+}
+
+.avatar-lightbox__name {
+  position: relative;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--brand-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 16px rgba(85, 71, 74, 0.18);
+  animation: av-frame-in 0.4s 0.08s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.avatar-lightbox__close {
+  position: absolute;
+  top: 22px;
+  right: 26px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand-text-regular);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+  box-shadow: 0 4px 14px rgba(85, 71, 74, 0.22);
+}
+
+.avatar-lightbox__close:hover {
+  transform: rotate(90deg) scale(1.06);
+  background: #fff;
+  color: #c0565f;
+}
+
+/* 遮罩淡入淡出 */
+.av-fade-enter-active,
+.av-fade-leave-active {
+  transition: opacity 0.28s ease;
+}
+
+.av-fade-enter-from,
+.av-fade-leave-to {
+  opacity: 0;
+}
+
+/* 遵循系统"减少动态效果"偏好：去光环、去位移，仅保留透明度切换 */
+@media (prefers-reduced-motion: reduce) {
+  .avatar-lightbox__aura,
+  .avatar-lightbox__aura--inner {
+    animation: none;
+    opacity: 0.4;
+  }
+
+  .avatar-lightbox__frame,
+  .avatar-lightbox__name {
+    animation: none;
+  }
+
+  .id-card__avatar-wrap,
+  .id-card__avatar-wrap::after,
+  .avatar-lightbox__close {
+    transition: none;
+  }
 }
 
 </style>

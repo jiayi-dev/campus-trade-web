@@ -340,12 +340,13 @@
               <span class="preview__en">LIVE</span>
             </div>
             <p class="preview__tip">买家在商品中心看到的效果</p>
-            <div class="preview__card">
+            <div class="preview__card" title="点击查看详情页效果">
               <GoodsCard
                   :goods="previewGoods"
                   :category-name="previewCategoryName"
                   :editable="false"
                   :favorite="false"
+                  @preview="detailPreviewVisible = true"
               />
             </div>
             <div v-if="missingFields.length" class="preview__missing">
@@ -355,10 +356,34 @@
             <div v-else class="preview__ready">
               <el-icon><CircleCheckFilled /></el-icon>信息已就绪，可以发布
             </div>
+
+            <!-- V1.3.2：详情页效果预览（只读弹窗，数据来自当前表单，不创建商品） -->
+            <el-button
+                class="preview__detail-btn"
+                plain
+                type="primary"
+                @click="detailPreviewVisible = true"
+            >
+              <el-icon><View /></el-icon>预览详情页效果
+            </el-button>
           </div>
         </aside>
       </div>
     </template>
+
+    <!-- 详情页效果预览弹窗：只读展示当前表单数据，关闭后表单与图片状态保留 -->
+    <GoodsDetailPreview
+        v-model="detailPreviewVisible"
+        :goods-name="form.goodsName"
+        :category-name="previewCategoryName"
+        :condition-level="form.conditionLevel"
+        :price="form.price"
+        :campus="form.campus"
+        :location="form.location"
+        :description="form.description"
+        :image-urls="uploadedUrls"
+        :seller-name="userName"
+    />
   </div>
 </template>
 
@@ -368,13 +393,19 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus, Delete, ArrowLeft, ArrowRight, Loading, School, Collection,
-  Shop, Promotion, CircleCheckFilled, Picture, Check
+  Shop, Promotion, CircleCheckFilled, Picture, Check, View
 } from '@element-plus/icons-vue'
 import GoodsCard from '../components/GoodsCard.vue'
+import GoodsDetailPreview from '../components/GoodsDetailPreview.vue'
 import { formatPrice } from '../utils/format'
 import request from '../utils/request'
 
 const router = useRouter()
+
+// 详情页效果预览弹窗开关（只读，不触发任何提交）
+const detailPreviewVisible = ref(false)
+// 卖家占位：预览里展示当前登录用户，不额外请求接口
+const userName = localStorage.getItem('username') || ''
 
 // =========================
 // 角色与视图状态
@@ -1289,6 +1320,11 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   font-weight: 600;
   color: #7d9d7a;
+}
+
+.preview__detail-btn {
+  width: 100%;
+  margin-top: 12px;
 }
 
 /* ==================== 门禁 / 成功态 ==================== */

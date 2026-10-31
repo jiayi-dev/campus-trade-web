@@ -38,6 +38,8 @@ request.interceptors.response.use(
     },
     error => {
         const { response, code: axiosCode, config = {} } = error
+        // config.silent = true 的请求失败时不弹全局提示（用于头像等可降级的可选请求）
+        const isSilent = config.silent === true
         let message
 
         if (!response) {
@@ -66,7 +68,9 @@ request.interceptors.response.use(
             }
         }
 
-        ElMessage.error(message)
+        if (!isSilent) {
+            ElMessage.error(message)
+        }
 
         return Promise.reject(error)
     }

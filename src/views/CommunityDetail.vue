@@ -82,8 +82,15 @@
         </div>
       </header>
 
-      <figure v-if="post.imageUrl" class="article__figure">
-        <img :src="post.imageUrl" :alt="post.title" />
+      <figure v-if="postImage" class="article__figure" @click.stop>
+        <el-image
+            :src="postImage"
+            :alt="post.title"
+            fit="cover"
+            :preview-src-list="[postImage]"
+            preview-teleported
+            hide-on-click-modal
+        />
       </figure>
 
       <div class="article__content">{{ post.content }}</div>
@@ -214,8 +221,38 @@
           />
         </el-form-item>
 
-        <el-form-item label="配图链接（可选）" prop="imageUrl">
-          <el-input v-model="form.imageUrl" placeholder="图片 URL，留空表示无配图" clearable />
+        <el-form-item label="配图（可选）" prop="imageUrl">
+          <div class="cover-uploader">
+            <input
+                ref="coverInputRef"
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                class="cover-uploader__input"
+                @change="handleCoverChange"
+            >
+            <div v-if="form.imageUrl" class="cover-preview">
+              <img :src="form.imageUrl" alt="配图预览">
+            </div>
+            <button
+                v-else
+                type="button"
+                class="cover-picker"
+                :disabled="coverUploading"
+                @click="chooseCover"
+            >
+              <el-icon v-if="coverUploading" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else><Plus /></el-icon>
+              <span>{{ coverUploading ? '图片上传中…' : '添加图片' }}</span>
+            </button>
+            <div class="cover-uploader__ops">
+              <el-button v-if="form.imageUrl" size="small" round :disabled="coverUploading" @click="chooseCover">
+                重新选择
+              </el-button>
+              <el-button v-if="form.imageUrl" size="small" round plain type="danger" :disabled="coverUploading" @click="form.imageUrl = ''">
+                删除图片
+              </el-button>
+            </div>
+          </div>
         </el-form-item>
 
         <el-form-item label="关联商品ID（可选）" prop="goodsId">
@@ -244,10 +281,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft, Link, Star, StarFilled, ChatDotRound, View, Edit, Delete,
-  Box, Lock, WarningFilled, CircleCloseFilled
+  Box, Lock, WarningFilled, CircleCloseFilled, Plus, Loading
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import { formatDateTime, formatRelativeTime } from '../utils/format'
+import { resolveGoodsImage } from '../utils/image'
+import { uploadImage } from '../utils/upload'
 
 const route = useRoute()
 const router = useRouter()
@@ -385,6 +424,35 @@ const formVisible = ref(false)
 const formSubmitting = ref(false)
 const formRef = ref()
 
+// 详情配图：统一走 resolveGoodsImage，过滤不可达地址
+const postImage = computed(() => resolveGoodsImage(post.value?.imageUrl))
+
+// 编辑配图：文件选择 → /api/upload/image → 相对 URL
+const coverInputRef = ref(null)
+const coverUploading = ref(false)
+
+const chooseCover = () => {
+  if (coverUploading.value) return
+  coverInputRef.value?.click()
+}
+
+const handleCoverChange = async (event) => {
+  const file = event.target.files && event.target.files[0]
+  event.target.value = ''
+  if (!file) return
+
+  coverUploading.value = true
+  try {
+    const url = await uploadImage(file)
+    form.imageUrl = url
+    ElMessage.success('图片已上传')
+  } catch (error) {
+    ElMessage.error(error?.message || '图片上传失败，请稍后重试')
+  } finally {
+    coverUploading.value = false
+  }
+}
+
 const form = reactive({
   postId: null,
   title: '',
@@ -418,6 +486,11 @@ const openEdit = () => {
 
 const submitEdit = async () => {
   if (!formRef.value) return
+
+  if (coverUploading.value) {
+    ElMessage.warning('配图正在上传，请稍候再保存')
+    return
+  }
 
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
@@ -620,13 +693,72 @@ onMounted(() => {
   border-radius: var(--brand-radius-lg);
   overflow: hidden;
   background: var(--brand-bg-soft);
+  cursor: zoom-in;
+}
+
+.article__figure img,
+.article__figure .el-image {
+  width: 100%;
+  max-height: 460px;
+  display: block;
 }
 
 .article__figure img {
+  object-fit: cover;
+}
+
+/* 编辑抽屉里的配图上传 */
+.cover-uploader { width: 100%; }
+.cover-uploader__input { display: none; }
+
+.cover-picker {
   width: 100%;
-  max-height: 460px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--brand-radius);
+  border: 1.5px dashed var(--brand-border);
+  background: linear-gradient(160deg, var(--cream-50, #fdfbf7), var(--cream-100, #f8f3ec));
+  color: var(--brand-text-soft, #8a7d74);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .2s ease, transform .2s ease;
+}
+
+.cover-picker:hover:not(:disabled) {
+  border-color: var(--theme-accent, #7fa89b);
+  transform: translateY(-1px);
+}
+
+.cover-picker:disabled { cursor: progress; opacity: .75; }
+
+.cover-picker .el-icon {
+  font-size: 20px;
+  color: var(--theme-accent, #7fa89b);
+}
+
+.cover-preview {
+  width: 100%;
+  border-radius: var(--brand-radius);
+  overflow: hidden;
+  border: 1px solid var(--brand-border);
+}
+
+.cover-preview img {
+  width: 100%;
+  max-height: 200px;
   object-fit: cover;
   display: block;
+}
+
+.cover-uploader__ops {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
 }
 
 .article__content {
