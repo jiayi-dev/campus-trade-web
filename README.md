@@ -101,14 +101,20 @@ src/
 
 ## 部署
 
-前端为纯静态产物：
+前端为纯静态产物，仓库已包含 `Dockerfile`（多阶段：Node 构建 → Nginx 托管）与 `nginx.conf`（SPA fallback + `/api` 反代）：
 
-1. `npm run build` 生成 `dist/`；
+1. `npm run build` 生成 `dist/`（Dockerfile 内自动完成）；
 2. 由 Nginx 托管静态文件；
-3. 由于使用 `createWebHistory`，Nginx 必须配置 SPA fallback：`try_files $uri $uri/ /index.html;`；
-4. `/api/` 反向代理到后端并**保留** `/api` 前缀（后端 context-path 为 `/api`）。
+3. 由于使用 `createWebHistory`，Nginx 已配置 SPA fallback：`try_files $uri $uri/ /index.html;`；
+4. `/api/` 反向代理到后端并**保留** `/api` 前缀（后端 context-path 为 `/api`），同时关闭 `proxy_buffering` 以支持 AI 助手 SSE 流式响应。
 
-完整的 Docker 部署前置条件、Nginx 配置要点与验收标准见后端仓库的 [部署方案](https://github.com/jiayi-dev/campus-trade/blob/v1.1/DEPLOYMENT_AND_DEMO_DATA_PLAN.md)。部署完成后，在此补充经过验证的构建与访问命令。
+单独构建前端镜像（通常直接使用后端仓库的 `docker-compose.yml` 一并编排）：
+
+```bash
+docker build -t campus-trade-frontend:local .
+```
+
+镜像已构建并只读验证通过（`dist/` 产物与 `nginx.conf` 均已打入镜像）。完整的编排启动、环境变量与验收标准见后端仓库的 [部署方案](https://github.com/jiayi-dev/campus-trade/blob/v1.1/DEPLOYMENT_AND_DEMO_DATA_PLAN.md) 与 README「Docker 部署」章节。
 
 ## 公开演示环境
 

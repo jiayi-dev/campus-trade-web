@@ -7,3 +7,8 @@ dist/
 
 # 本地构建日志，不入库
 build_output*.txt
+
+# Docker 部署密钥文件（只提交 .env.example）
+.env
+.env.*
+!.env.example
